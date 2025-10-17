@@ -11,6 +11,16 @@ export interface EvaluationResult {
   score: number;
   totalQuestions: number;
   accuracy: number;
+  confidence?: string;
+  lowConfidenceCount?: number;
+  detailedResults?: Array<{
+    question: number;
+    extracted: string;
+    correct: string;
+    isCorrect: boolean;
+    confidence: string;
+    note: string;
+  }>;
 }
 
 const Index = () => {
@@ -72,13 +82,19 @@ const Index = () => {
         score: result.score,
         totalQuestions: result.totalQuestions,
         accuracy: result.accuracy,
+        confidence: result.confidence,
+        lowConfidenceCount: result.lowConfidenceCount,
+        detailedResults: result.detailedResults,
       };
       
       setEvaluationResult(evaluationResult);
       
+      const confidenceText = result.confidence === "high" ? "High confidence" : 
+                            result.confidence === "medium" ? "Medium confidence" : "Low confidence";
+      
       toast({
         title: "Evaluation complete!",
-        description: `Score: ${result.score}/${result.totalQuestions} (${result.accuracy}%)`,
+        description: `Score: ${result.score}/${result.totalQuestions} (${result.accuracy}%) - ${confidenceText}`,
       });
     } catch (error) {
       console.error("Error processing answer sheet:", error);

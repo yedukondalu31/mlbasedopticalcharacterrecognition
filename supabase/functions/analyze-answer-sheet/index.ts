@@ -21,23 +21,52 @@ serve(async (req) => {
     console.log("Analyzing answer sheet with AI...");
     console.log("Answer key length:", answerKey.length);
 
-    // Create a detailed prompt for the AI to extract handwritten answers
-    const prompt = `You are an expert OCR system specialized in reading handwritten answers from answer sheets.
+    // Enhanced prompt for superior OCR accuracy
+    const prompt = `You are an advanced OCR system with expert-level handwriting recognition capabilities, trained on thousands of answer sheets.
 
-Analyze this answer sheet image and extract ALL handwritten answers you can see. The sheet has ${answerKey.length} questions.
+TASK: Analyze this answer sheet image and extract handwritten answers with maximum precision.
 
-IMPORTANT INSTRUCTIONS:
-- Look for numbered questions (1, 2, 3, etc.) or answer bubbles/boxes
-- Each answer could be a letter (A, B, C, D), a word, or a short phrase
-- Return ONLY a JSON array with exactly ${answerKey.length} answers in order
-- If you cannot clearly read an answer, use "?" as a placeholder
-- Be as accurate as possible with handwriting recognition
-- Extract answers in sequential order (question 1, 2, 3, etc.)
+CONTEXT:
+- Total questions: ${answerKey.length}
+- Answer format: Single letters (A, B, C, D) or short text
+- Sheet may contain handwritten text, checkboxes, bubbles, or circled answers
 
-Expected format (for ${answerKey.length} questions):
-["A", "B", "C", "D", ...]
+ANALYSIS INSTRUCTIONS:
+1. IMAGE PREPROCESSING:
+   - Examine the entire image carefully for all question numbers
+   - Look for patterns: numbered lists, bubble grids, answer boxes
+   - Identify any rotation, skew, or lighting issues
+   - Note any crossed-out or corrected answers
 
-Return ONLY the JSON array, nothing else. Extract all ${answerKey.length} visible answers from the image now.`;
+2. HANDWRITING RECOGNITION:
+   - Study each character's stroke patterns and structure
+   - Consider context from surrounding characters
+   - Distinguish between similar letters (O/0, I/l/1, S/5, Z/2, B/8)
+   - Account for different handwriting styles (print, cursive, mixed)
+   - Recognize common answer patterns in multiple choice tests
+
+3. CONFIDENCE ASSESSMENT:
+   For each answer, provide:
+   - The extracted answer
+   - Confidence level: "high" (90-100%), "medium" (70-89%), "low" (<70%)
+   - Any ambiguity notes
+
+4. OUTPUT FORMAT:
+Return a JSON object with this exact structure:
+{
+  "answers": ["A", "B", "C", ...],
+  "confidence": ["high", "medium", "low", ...],
+  "notes": ["clear", "slight blur", "corrected answer", ...]
+}
+
+CRITICAL RULES:
+- Array length must be exactly ${answerKey.length}
+- Use "?" only if the answer area is blank or completely illegible
+- Mark uncertain answers with "low" confidence, not "?"
+- Process answers in sequential order (1, 2, 3, ...)
+- Return ONLY valid JSON, no additional text
+
+Analyze the image now with maximum precision.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -46,7 +75,7 @@ Return ONLY the JSON array, nothing else. Extract all ${answerKey.length} visibl
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro", // Upgraded to Pro for superior vision accuracy
         messages: [
           {
             role: "user",
@@ -90,20 +119,44 @@ Return ONLY the JSON array, nothing else. Extract all ${answerKey.length} visibl
     
     console.log("AI Response:", aiResponse);
 
-    // Extract JSON array from the response
+    // Extract structured JSON from the response
     let extractedAnswers: string[] = [];
+    let confidenceLevels: string[] = [];
+    let analysisNotes: string[] = [];
+    
     try {
-      // Try to find JSON array in the response
-      const jsonMatch = aiResponse.match(/\[[\s\S]*?\]/);
+      // Try to find JSON object in the response
+      const jsonMatch = aiResponse.match(/\{[\s\S]*?\}/);
       if (jsonMatch) {
-        extractedAnswers = JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
+        extractedAnswers = parsed.answers || [];
+        confidenceLevels = parsed.confidence || [];
+        analysisNotes = parsed.notes || [];
+        
+        console.log("Parsed response:", { extractedAnswers, confidenceLevels, analysisNotes });
       } else {
-        throw new Error("No JSON array found in response");
+        throw new Error("No JSON object found in response");
       }
     } catch (parseError) {
       console.error("Failed to parse AI response:", parseError);
-      // Fallback: create array of question marks
-      extractedAnswers = Array(answerKey.length).fill("?");
+      console.error("Raw AI response:", aiResponse);
+      
+      // Fallback: try to extract just the answers array
+      try {
+        const arrayMatch = aiResponse.match(/\[[\s\S]*?\]/);
+        if (arrayMatch) {
+          extractedAnswers = JSON.parse(arrayMatch[0]);
+          confidenceLevels = Array(extractedAnswers.length).fill("unknown");
+          analysisNotes = Array(extractedAnswers.length).fill("fallback parsing");
+        } else {
+          throw new Error("Could not parse response");
+        }
+      } catch {
+        // Final fallback: create array of question marks
+        extractedAnswers = Array(answerKey.length).fill("?");
+        confidenceLevels = Array(answerKey.length).fill("low");
+        analysisNotes = Array(answerKey.length).fill("parsing failed");
+      }
     }
 
     // Ensure extracted answers match the expected length
@@ -116,17 +169,43 @@ Return ONLY the JSON array, nothing else. Extract all ${answerKey.length} visibl
       extractedAnswers = extractedAnswers.slice(0, answerKey.length);
     }
 
-    // Calculate score
+    // Calculate score with detailed analysis
     let correctCount = 0;
+    let lowConfidenceCount = 0;
+    const detailedResults: Array<{
+      question: number;
+      extracted: string;
+      correct: string;
+      isCorrect: boolean;
+      confidence: string;
+      note: string;
+    }> = [];
+    
     extractedAnswers.forEach((extracted, index) => {
       const correct = answerKey[index];
-      if (extracted.toLowerCase() === correct.toLowerCase()) {
-        correctCount++;
-      }
+      const isCorrect = extracted.toLowerCase() === correct.toLowerCase();
+      const confidence = confidenceLevels[index] || "unknown";
+      const note = analysisNotes[index] || "";
+      
+      if (isCorrect) correctCount++;
+      if (confidence === "low") lowConfidenceCount++;
+      
+      detailedResults.push({
+        question: index + 1,
+        extracted,
+        correct,
+        isCorrect,
+        confidence,
+        note,
+      });
     });
 
     const totalQuestions = answerKey.length;
     const accuracy = totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 0;
+    const avgConfidence = lowConfidenceCount === 0 ? "high" : 
+                         lowConfidenceCount < totalQuestions / 2 ? "medium" : "low";
+
+    console.log(`Evaluation complete: ${correctCount}/${totalQuestions} correct, avg confidence: ${avgConfidence}`);
 
     return new Response(
       JSON.stringify({
@@ -135,6 +214,9 @@ Return ONLY the JSON array, nothing else. Extract all ${answerKey.length} visibl
         score: correctCount,
         totalQuestions: totalQuestions,
         accuracy: Math.round(accuracy * 10) / 10,
+        confidence: avgConfidence,
+        lowConfidenceCount,
+        detailedResults,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

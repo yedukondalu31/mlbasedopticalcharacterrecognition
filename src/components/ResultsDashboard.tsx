@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, Download, RotateCcw, TrendingUp } from "lucide-react";
+import { CheckCircle, XCircle, Download, RotateCcw, TrendingUp, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -12,7 +12,7 @@ interface ResultsDashboardProps {
 }
 
 const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardProps) => {
-  const { extractedAnswers, correctAnswers, score, totalQuestions, accuracy } = result;
+  const { extractedAnswers, correctAnswers, score, totalQuestions, accuracy, confidence, lowConfidenceCount, detailedResults } = result;
 
   const handleExport = () => {
     const reportData = {
@@ -62,7 +62,7 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3 mb-6">
+      <div className="grid gap-6 md:grid-cols-4 mb-6">
         <StatCard
           title="Score"
           value={`${score}/${totalQuestions}`}
@@ -74,6 +74,12 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
           value={`${accuracy.toFixed(1)}%`}
           icon={<CheckCircle className="h-5 w-5" />}
           color={accuracy >= 75 ? "success" : accuracy >= 50 ? "accent" : "destructive"}
+        />
+        <StatCard
+          title="Confidence"
+          value={confidence?.toUpperCase() || "N/A"}
+          icon={<AlertCircle className="h-5 w-5" />}
+          color={confidence === "high" ? "success" : confidence === "medium" ? "accent" : "destructive"}
         />
         <StatCard
           title="Incorrect"
@@ -96,43 +102,94 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
           <h3 className="text-lg font-semibold mb-4">Answer Comparison</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {extractedAnswers.map((extracted, index) => {
-              const correct = correctAnswers[index];
-              const isCorrect = extracted === correct;
-              
-              return (
-                <div
-                  key={index}
-                  className={`flex items-center justify-between p-4 rounded-lg border-2 transition-all ${
-                    isCorrect
-                      ? 'bg-success/5 border-success/30'
-                      : 'bg-destructive/5 border-destructive/30'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-background text-sm font-bold">
-                      {index + 1}
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Extracted</div>
-                      <div className="text-lg font-bold">{extracted}</div>
-                    </div>
-                  </div>
+            {detailedResults ? (
+              detailedResults.map((result) => {
+                const confidenceColor = result.confidence === "high" ? "text-success" :
+                                      result.confidence === "medium" ? "text-accent" : "text-destructive";
+                
+                return (
+                  <div
+                    key={result.question}
+                    className={`flex flex-col p-4 rounded-lg border-2 transition-all ${
+                      result.isCorrect
+                        ? 'bg-success/5 border-success/30'
+                        : 'bg-destructive/5 border-destructive/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-background text-sm font-bold">
+                          {result.question}
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Extracted</div>
+                          <div className="text-lg font-bold">{result.extracted}</div>
+                        </div>
+                      </div>
 
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <div className="text-sm text-muted-foreground text-right">Correct</div>
-                      <div className="text-lg font-bold">{correct}</div>
+                      <div className="flex items-center gap-3">
+                        <div>
+                          <div className="text-sm text-muted-foreground text-right">Correct</div>
+                          <div className="text-lg font-bold">{result.correct}</div>
+                        </div>
+                        {result.isCorrect ? (
+                          <CheckCircle className="h-6 w-6 text-success" />
+                        ) : (
+                          <XCircle className="h-6 w-6 text-destructive" />
+                        )}
+                      </div>
                     </div>
-                    {isCorrect ? (
-                      <CheckCircle className="h-6 w-6 text-success" />
-                    ) : (
-                      <XCircle className="h-6 w-6 text-destructive" />
-                    )}
+                    
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/50">
+                      <span className={`text-xs font-semibold ${confidenceColor}`}>
+                        {result.confidence.toUpperCase()}
+                      </span>
+                      {result.note && (
+                        <span className="text-xs text-muted-foreground">• {result.note}</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              extractedAnswers.map((extracted, index) => {
+                const correct = correctAnswers[index];
+                const isCorrect = extracted === correct;
+                
+                return (
+                  <div
+                    key={index}
+                    className={`flex items-center justify-between p-4 rounded-lg border-2 transition-all ${
+                      isCorrect
+                        ? 'bg-success/5 border-success/30'
+                        : 'bg-destructive/5 border-destructive/30'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-background text-sm font-bold">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Extracted</div>
+                        <div className="text-lg font-bold">{extracted}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <div className="text-sm text-muted-foreground text-right">Correct</div>
+                        <div className="text-lg font-bold">{correct}</div>
+                      </div>
+                      {isCorrect ? (
+                        <CheckCircle className="h-6 w-6 text-success" />
+                      ) : (
+                        <XCircle className="h-6 w-6 text-destructive" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </Card>
