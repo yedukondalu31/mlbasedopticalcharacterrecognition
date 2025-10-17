@@ -43,38 +43,53 @@ const Index = () => {
   const processAnswerSheet = async (correctAnswers: string[]) => {
     setIsProcessing(true);
     
-    // Simulate OCR processing with realistic delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Mock OCR extraction - randomly generate answers with ~80% accuracy
-    const extractedAnswers = correctAnswers.map(correct => {
-      const random = Math.random();
-      if (random < 0.8) return correct; // 80% correct
-      const options = ['A', 'B', 'C', 'D'];
-      return options[Math.floor(Math.random() * options.length)];
-    });
+    try {
+      // Call the AI edge function to analyze the answer sheet
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-answer-sheet`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            image: uploadedImage,
+            answerKey: correctAnswers,
+          }),
+        }
+      );
 
-    // Calculate results
-    let correctCount = 0;
-    extractedAnswers.forEach((answer, index) => {
-      if (answer === correctAnswers[index]) correctCount++;
-    });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to analyze answer sheet");
+      }
 
-    const result: EvaluationResult = {
-      extractedAnswers,
-      correctAnswers,
-      score: correctCount,
-      totalQuestions: correctAnswers.length,
-      accuracy: (correctCount / correctAnswers.length) * 100,
-    };
-
-    setEvaluationResult(result);
-    setIsProcessing(false);
-
-    toast({
-      title: "Evaluation complete!",
-      description: `Score: ${correctCount}/${correctAnswers.length} (${result.accuracy.toFixed(1)}%)`,
-    });
+      const result = await response.json();
+      
+      const evaluationResult: EvaluationResult = {
+        extractedAnswers: result.extractedAnswers,
+        correctAnswers: result.correctAnswers,
+        score: result.score,
+        totalQuestions: result.totalQuestions,
+        accuracy: result.accuracy,
+      };
+      
+      setEvaluationResult(evaluationResult);
+      
+      toast({
+        title: "Evaluation complete!",
+        description: `Score: ${result.score}/${result.totalQuestions} (${result.accuracy}%)`,
+      });
+    } catch (error) {
+      console.error("Error processing answer sheet:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to process answer sheet",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleReset = () => {
