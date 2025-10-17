@@ -21,52 +21,78 @@ serve(async (req) => {
     console.log("Analyzing answer sheet with AI...");
     console.log("Answer key length:", answerKey.length);
 
-    // Enhanced prompt for superior OCR accuracy
-    const prompt = `You are an advanced OCR system with expert-level handwriting recognition capabilities, trained on thousands of answer sheets.
+    // Enhanced prompt for grid-based answer sheet detection
+    const prompt = `You are an advanced OCR system specialized in detecting grid-based answer sheets with expert-level pattern recognition.
 
-TASK: Analyze this answer sheet image and extract handwritten answers with maximum precision.
+TASK: Analyze this grid-based answer sheet and extract handwritten answers from each box with maximum precision.
 
 CONTEXT:
 - Total questions: ${answerKey.length}
-- Answer format: Single letters (A, B, C, D) or short text
-- Sheet may contain handwritten text, checkboxes, bubbles, or circled answers
+- Layout: Grid pattern with m×n boxes filled by student
+- Answer format: Single letters (A, B, C, D) or short text in each grid cell
+- Sheet contains a structured grid of answer boxes
 
-ANALYSIS INSTRUCTIONS:
-1. IMAGE PREPROCESSING:
-   - Examine the entire image carefully for all question numbers
-   - Look for patterns: numbered lists, bubble grids, answer boxes
-   - Identify any rotation, skew, or lighting issues
-   - Note any crossed-out or corrected answers
+GRID DETECTION PROTOCOL:
+1. GRID STRUCTURE ANALYSIS:
+   - Identify the grid layout and boundaries
+   - Detect individual box/cell boundaries
+   - Map each box to its corresponding question number
+   - Account for any grid rotation, skew, or distortion
+   - Identify the reading order (left-to-right, top-to-bottom)
 
-2. HANDWRITING RECOGNITION:
+2. BOX-BY-BOX EXTRACTION:
+   - Process each grid cell systematically
+   - Isolate the content within each box boundary
+   - Handle partially filled, crossed-out, or corrected answers
+   - Detect checkmarks, bubbles, circled letters, or handwritten text
+   - Account for answers that may span slightly outside box boundaries
+
+3. HANDWRITING RECOGNITION:
    - Study each character's stroke patterns and structure
-   - Consider context from surrounding characters
+   - Consider context from surrounding characters in adjacent boxes
    - Distinguish between similar letters (O/0, I/l/1, S/5, Z/2, B/8)
    - Account for different handwriting styles (print, cursive, mixed)
-   - Recognize common answer patterns in multiple choice tests
+   - Recognize common answer patterns in multiple choice grids
+   - Handle cases where students write outside the box lines
 
-3. CONFIDENCE ASSESSMENT:
+4. GRID ALIGNMENT & NUMBERING:
+   - Verify question numbering matches grid position
+   - Detect if grid is numbered sequentially or in a specific pattern
+   - Handle missing or skipped boxes
+   - Identify any irregularities in the grid structure
+
+5. CONFIDENCE ASSESSMENT:
    For each answer, provide:
-   - The extracted answer
+   - The extracted answer from the grid cell
    - Confidence level: "high" (90-100%), "medium" (70-89%), "low" (<70%)
-   - Any ambiguity notes
+   - Detailed notes about the detection (e.g., "clear in box 3,2", "slightly outside boundary")
 
-4. OUTPUT FORMAT:
+6. OUTPUT FORMAT:
 Return a JSON object with this exact structure:
 {
   "answers": ["A", "B", "C", ...],
   "confidence": ["high", "medium", "low", ...],
-  "notes": ["clear", "slight blur", "corrected answer", ...]
+  "notes": ["clear in grid cell", "answer extends beyond box", "corrected answer", ...]
 }
 
 CRITICAL RULES:
 - Array length must be exactly ${answerKey.length}
-- Use "?" only if the answer area is blank or completely illegible
-- Mark uncertain answers with "low" confidence, not "?"
-- Process answers in sequential order (1, 2, 3, ...)
+- Process grid boxes in sequential order matching question numbers
+- Use "?" only if a grid box is completely empty or illegible
+- Mark uncertain answers with "low" confidence rather than "?"
+- Account for grid distortions, shadows, or folds in the paper
 - Return ONLY valid JSON, no additional text
+- Handle cases where the grid may be partially visible or cropped
 
-Analyze the image now with maximum precision.`;
+GRID-SPECIFIC CHALLENGES TO HANDLE:
+- Grid lines that may be faint or unclear
+- Boxes that are not perfectly aligned
+- Student answers that cross box boundaries
+- Multiple marks in a single box (corrections)
+- Varying box sizes or irregular grids
+- Numbers or annotations outside the answer boxes
+
+Analyze the grid-based answer sheet now with maximum precision and systematic grid detection.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
