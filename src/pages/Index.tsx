@@ -4,6 +4,7 @@ import ImageUpload from "@/components/ImageUpload";
 import AnswerKeyForm from "@/components/AnswerKeyForm";
 import ResultsDashboard from "@/components/ResultsDashboard";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface EvaluationResult {
   extractedAnswers: string[];
@@ -86,6 +87,31 @@ const Index = () => {
         lowConfidenceCount: result.lowConfidenceCount,
         detailedResults: result.detailedResults,
       };
+      
+      // Save evaluation to database
+      const { error: dbError } = await supabase
+        .from('evaluations')
+        .insert({
+          image_url: uploadedImage!,
+          answer_key: correctAnswers,
+          extracted_answers: result.extractedAnswers,
+          correct_answers: result.correctAnswers,
+          score: result.score,
+          total_questions: result.totalQuestions,
+          accuracy: result.accuracy,
+          confidence: result.confidence,
+          low_confidence_count: result.lowConfidenceCount,
+          detailed_results: result.detailedResults,
+        });
+      
+      if (dbError) {
+        console.error("Error saving to database:", dbError);
+        toast({
+          title: "Warning",
+          description: "Evaluation completed but couldn't save to database",
+          variant: "destructive",
+        });
+      }
       
       setEvaluationResult(evaluationResult);
       

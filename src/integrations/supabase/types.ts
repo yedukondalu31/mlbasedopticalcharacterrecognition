@@ -14,7 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      evaluations: {
+        Row: {
+          accuracy: number
+          answer_key: string[]
+          confidence: string | null
+          correct_answers: string[]
+          created_at: string
+          detailed_results: Json | null
+          extracted_answers: string[]
+          id: string
+          image_url: string
+          low_confidence_count: number | null
+          score: number
+          total_questions: number
+          updated_at: string
+        }
+        Insert: {
+          accuracy: number
+          answer_key: string[]
+          confidence?: string | null
+          correct_answers: string[]
+          created_at?: string
+          detailed_results?: Json | null
+          extracted_answers: string[]
+          id?: string
+          image_url: string
+          low_confidence_count?: number | null
+          score: number
+          total_questions: number
+          updated_at?: string
+        }
+        Update: {
+          accuracy?: number
+          answer_key?: string[]
+          confidence?: string | null
+          correct_answers?: string[]
+          created_at?: string
+          detailed_results?: Json | null
+          extracted_answers?: string[]
+          id?: string
+          image_url?: string
+          low_confidence_count?: number | null
+          score?: number
+          total_questions?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
