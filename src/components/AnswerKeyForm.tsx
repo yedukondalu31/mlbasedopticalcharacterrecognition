@@ -71,15 +71,15 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
 
   return (
     <section className="w-full">
-      <div className="mb-6">
-        <h2 className="text-3xl font-bold text-foreground mb-2">Set Answer Key</h2>
-        <p className="text-muted-foreground">
-          Configure the correct answers for evaluation
+      <div className="mb-4 md:mb-6">
+        <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-1 md:mb-2">Set Answer Key</h2>
+        <p className="text-sm md:text-base text-muted-foreground">
+          Configure the correct answers
         </p>
       </div>
 
-      <Card className="p-6 bg-gradient-card border-2 transition-all hover:shadow-lg">
-        <div className="space-y-6">
+      <Card className="p-4 md:p-6 bg-gradient-card border-2 transition-all hover:shadow-lg">
+        <div className="space-y-4 md:space-y-6">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
               <Label htmlFor="grid-mode" className="cursor-pointer">Grid Mode</Label>
@@ -137,17 +137,17 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
               </div>
             )}
             
-            <div className="flex gap-2 pt-6">
-              <Button variant="outline" size="sm" onClick={() => quickFill('A')}>Fill A</Button>
-              <Button variant="outline" size="sm" onClick={() => quickFill('B')}>Fill B</Button>
-              <Button variant="outline" size="sm" onClick={() => quickFill('C')}>Fill C</Button>
-              <Button variant="outline" size="sm" onClick={() => quickFill('D')}>Fill D</Button>
+            <div className="grid grid-cols-4 gap-2 pt-4 md:pt-6">
+              <Button variant="outline" size="sm" onClick={() => quickFill('A')} className="min-h-[40px]">Fill A</Button>
+              <Button variant="outline" size="sm" onClick={() => quickFill('B')} className="min-h-[40px]">Fill B</Button>
+              <Button variant="outline" size="sm" onClick={() => quickFill('C')} className="min-h-[40px]">Fill C</Button>
+              <Button variant="outline" size="sm" onClick={() => quickFill('D')} className="min-h-[40px]">Fill D</Button>
             </div>
           </div>
 
-          <div className="border-t pt-6">
-            <Label className="text-base font-semibold mb-3 block">
-              Answer Key (A, B, C, or D) {gridMode && `- Grid Layout: ${rows} rows × ${columns} columns`}
+          <div className="border-t pt-4 md:pt-6">
+            <Label className="text-sm md:text-base font-semibold mb-2 md:mb-3 block">
+              Answer Key (A, B, C, or D) {gridMode && `- ${rows}×${columns}`}
             </Label>
             {gridMode ? (
               <div className="space-y-2">
@@ -176,18 +176,18 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-10 gap-3">
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2 md:gap-3">
                 {answers.map((answer, index) => (
                   <div key={index} className="space-y-1">
-                    <Label htmlFor={`answer-${index}`} className="text-xs text-muted-foreground">
-                      Q{index + 1}
+                    <Label htmlFor={`answer-${index}`} className="text-[10px] md:text-xs text-muted-foreground text-center block">
+                      {index + 1}
                     </Label>
                     <Input
                       id={`answer-${index}`}
                       value={answer}
                       onChange={(e) => handleAnswerChange(index, e.target.value)}
                       maxLength={1}
-                      className="text-center font-bold text-lg uppercase h-12"
+                      className="text-center font-bold text-base md:text-lg uppercase h-10 md:h-12 touch-manipulation"
                       placeholder="-"
                     />
                   </div>
@@ -201,7 +201,7 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
               onClick={handleSubmit}
               disabled={disabled || isProcessing}
               size="lg"
-              className="min-w-[200px] shadow-md hover:shadow-lg transition-all"
+              className="w-full sm:w-auto sm:min-w-[200px] min-h-[48px] shadow-md hover:shadow-lg transition-all touch-manipulation"
             >
               {isProcessing ? (
                 <>
@@ -211,7 +211,7 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
               ) : (
                 <>
                   <Play className="mr-2 h-5 w-5" />
-                  Evaluate Answer Sheet
+                  Evaluate Sheet
                 </>
               )}
             </Button>

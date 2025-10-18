@@ -96,10 +96,10 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
 
   return (
     <section className="w-full">
-      <div className="mb-6">
-        <h2 className="text-3xl font-bold text-foreground mb-2">Upload Answer Sheet</h2>
-        <p className="text-muted-foreground">
-          Drag and drop your answer sheet image or click to browse
+      <div className="mb-4 md:mb-6">
+        <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-1 md:mb-2">Upload Answer Sheet</h2>
+        <p className="text-sm md:text-base text-muted-foreground">
+          Take a photo or upload an image
         </p>
       </div>
 
@@ -127,7 +127,7 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
-            className={`relative p-12 text-center transition-all ${
+            className={`relative p-6 md:p-12 text-center transition-all ${
               isDragging 
                 ? 'border-primary bg-primary/5 scale-[1.02]' 
                 : 'border-border hover:border-primary/50'
@@ -141,36 +141,36 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
               id="file-upload"
             />
             
-            <div className="space-y-4">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary/10 text-primary transition-transform hover:scale-110">
-                <Upload className="h-10 w-10" />
+            <div className="space-y-3 md:space-y-4">
+              <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-full bg-primary/10 text-primary transition-transform hover:scale-110">
+                <Upload className="h-8 w-8 md:h-10 md:w-10" />
               </div>
               
               <div>
-                <p className="text-lg font-semibold text-foreground mb-1">
-                  Drop your answer sheet here
+                <p className="text-base md:text-lg font-semibold text-foreground mb-1">
+                  Capture or Upload
                 </p>
-                <p className="text-sm text-muted-foreground">
-                  or click to browse from your device
+                <p className="text-xs md:text-sm text-muted-foreground px-4">
+                  Take a photo or choose from gallery
                 </p>
               </div>
 
-              <div className="flex gap-3 justify-center">
-                <Button variant="outline" className="mt-4" asChild>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center mt-4">
+                <Button variant="default" size="lg" onClick={startCamera} className="w-full sm:w-auto min-h-[48px]">
+                  <Camera className="mr-2 h-5 w-5" />
+                  Take Photo
+                </Button>
+                
+                <Button variant="outline" size="lg" asChild className="w-full sm:w-auto min-h-[48px]">
                   <label htmlFor="file-upload" className="cursor-pointer">
-                    <ImageIcon className="mr-2 h-4 w-4" />
+                    <ImageIcon className="mr-2 h-5 w-5" />
                     Choose Image
                   </label>
                 </Button>
-                
-                <Button variant="outline" className="mt-4" onClick={startCamera}>
-                  <Camera className="mr-2 h-4 w-4" />
-                  Take Photo
-                </Button>
               </div>
 
-              <p className="text-xs text-muted-foreground mt-4">
-                Supports: JPG, PNG, JPEG (Max 10MB)
+              <p className="text-[10px] md:text-xs text-muted-foreground mt-2">
+                JPG, PNG, JPEG (Max 10MB)
               </p>
             </div>
           </div>

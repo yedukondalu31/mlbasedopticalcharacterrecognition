@@ -145,7 +145,7 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <Hero />
       
-      <main className="container mx-auto px-4 py-12 space-y-12">
+      <main className="container mx-auto px-4 py-6 md:py-12 space-y-8 md:space-y-12">
         <ImageUpload 
           onImageUpload={handleImageUpload} 
           currentImage={uploadedImage}
