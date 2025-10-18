@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
-import { Upload, Image as ImageIcon, X } from "lucide-react";
+import { useCallback, useState, useRef } from "react";
+import { Upload, Image as ImageIcon, X, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 
 interface ImageUploadProps {
   onImageUpload: (imageUrl: string) => void;
@@ -10,6 +11,10 @@ interface ImageUploadProps {
 
 const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const { toast } = useToast();
 
   const handleFile = useCallback((file: File) => {
     if (file && file.type.startsWith('image/')) {
@@ -47,6 +52,48 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
     onImageUpload("");
   };
 
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        streamRef.current = stream;
+        setShowCamera(true);
+      }
+    } catch (error) {
+      toast({
+        title: "Camera Access Denied",
+        description: "Please allow camera access to take photos.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setShowCamera(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0);
+        const imageUrl = canvas.toDataURL('image/jpeg');
+        onImageUpload(imageUrl);
+        stopCamera();
+      }
+    }
+  };
+
   return (
     <section className="w-full">
       <div className="mb-6">
@@ -57,7 +104,25 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
       </div>
 
       <Card className="overflow-hidden bg-gradient-card border-2 transition-all hover:shadow-lg">
-        {!currentImage ? (
+        {showCamera ? (
+          <div className="relative">
+            <video 
+              ref={videoRef}
+              autoPlay
+              playsInline
+              className="w-full h-auto max-h-[500px]"
+            />
+            <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
+              <Button onClick={capturePhoto} size="lg" className="shadow-lg">
+                <Camera className="mr-2 h-5 w-5" />
+                Capture Photo
+              </Button>
+              <Button onClick={stopCamera} variant="outline" size="lg" className="shadow-lg">
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : !currentImage ? (
           <div
             onDrop={handleDrop}
             onDragOver={handleDragOver}
@@ -90,12 +155,19 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
                 </p>
               </div>
 
-              <Button variant="outline" className="mt-4" asChild>
-                <label htmlFor="file-upload" className="cursor-pointer">
-                  <ImageIcon className="mr-2 h-4 w-4" />
-                  Choose Image
-                </label>
-              </Button>
+              <div className="flex gap-3 justify-center">
+                <Button variant="outline" className="mt-4" asChild>
+                  <label htmlFor="file-upload" className="cursor-pointer">
+                    <ImageIcon className="mr-2 h-4 w-4" />
+                    Choose Image
+                  </label>
+                </Button>
+                
+                <Button variant="outline" className="mt-4" onClick={startCamera}>
+                  <Camera className="mr-2 h-4 w-4" />
+                  Take Photo
+                </Button>
+              </div>
 
               <p className="text-xs text-muted-foreground mt-4">
                 Supports: JPG, PNG, JPEG (Max 10MB)
