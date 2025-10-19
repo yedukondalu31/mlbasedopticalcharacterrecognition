@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Session } from "@supabase/supabase-js";
 import Hero from "@/components/Hero";
 import ImageUpload from "@/components/ImageUpload";
 import AnswerKeyForm from "@/components/AnswerKeyForm";
@@ -25,10 +27,30 @@ export interface EvaluationResult {
 }
 
 const Index = () => {
+  const [session, setSession] = useState<Session | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [answerKey, setAnswerKey] = useState<string[]>([]);
   const [evaluationResult, setEvaluationResult] = useState<EvaluationResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (!session) navigate('/auth');
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        if (!session) navigate('/auth');
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  if (!session) return null;
 
   const handleImageUpload = (imageUrl: string) => {
     setUploadedImage(imageUrl);
@@ -55,6 +77,10 @@ const Index = () => {
     setIsProcessing(true);
     
     try {
+      if (!session) {
+        throw new Error("Authentication required");
+      }
+
       // Call the AI edge function to analyze the answer sheet
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-answer-sheet`,
@@ -62,6 +88,7 @@ const Index = () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
             image: uploadedImage,
@@ -92,6 +119,7 @@ const Index = () => {
       const { error: dbError } = await supabase
         .from('evaluations')
         .insert({
+          user_id: session.user.id,
           image_url: uploadedImage!,
           answer_key: correctAnswers,
           extracted_answers: result.extractedAnswers,
@@ -143,7 +171,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Hero />
+      <Hero session={session} />
       
       <main className="container mx-auto px-4 py-6 md:py-12 space-y-8 md:space-y-12">
         <ImageUpload 
