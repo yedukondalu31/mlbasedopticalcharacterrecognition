@@ -12,6 +12,46 @@ serve(async (req) => {
 
   try {
     const { image, answerKey } = await req.json();
+    
+    // Input validation
+    if (!image || typeof image !== 'string') {
+      return new Response(
+        JSON.stringify({ error: "Invalid input: Image is required and must be a base64 string" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!answerKey || !Array.isArray(answerKey) || answerKey.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Invalid input: Answer key is required and must be a non-empty array" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (answerKey.length > 200) {
+      return new Response(
+        JSON.stringify({ error: "Invalid input: Answer key cannot exceed 200 questions" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate image is a valid base64 data URL
+    if (!image.startsWith('data:image/')) {
+      return new Response(
+        JSON.stringify({ error: "Invalid input: Image must be a valid data URL" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check image size (base64 string length as proxy)
+    const imageSizeInMB = (image.length * 0.75) / (1024 * 1024); // Approximate size
+    if (imageSizeInMB > 15) {
+      return new Response(
+        JSON.stringify({ error: "Invalid input: Image size too large (max 15MB after encoding)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     
     if (!LOVABLE_API_KEY) {
@@ -29,6 +69,13 @@ An answer sheet typically has:
 - Answer options (A, B, C, D or similar)
 - Structured layout for recording answers
 - May be handwritten or printed
+- Educational/exam context
+
+NOT answer sheets:
+- Random photos of people, landscapes, objects
+- Screenshots, memes, or social media posts
+- Documents without answer grids
+- Blank papers or non-educational content
 
 Respond with ONLY a JSON object in this exact format:
 {

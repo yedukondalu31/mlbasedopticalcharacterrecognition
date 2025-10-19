@@ -5,6 +5,7 @@ import Hero from "@/components/Hero";
 import ImageUpload from "@/components/ImageUpload";
 import AnswerKeyForm from "@/components/AnswerKeyForm";
 import ResultsDashboard from "@/components/ResultsDashboard";
+import PrivacyNotice from "@/components/PrivacyNotice";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -186,6 +187,7 @@ const Index = () => {
       <Hero session={session} />
       
       <main className="container mx-auto px-4 py-6 md:py-12 space-y-8 md:space-y-12">
+        <PrivacyNotice />
         <ImageUpload 
           onImageUpload={handleImageUpload} 
           currentImage={uploadedImage}
