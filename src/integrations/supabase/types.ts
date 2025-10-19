@@ -29,6 +29,7 @@ export type Database = {
           score: number
           total_questions: number
           updated_at: string
+          user_id: string
         }
         Insert: {
           accuracy: number
@@ -44,6 +45,7 @@ export type Database = {
           score: number
           total_questions: number
           updated_at?: string
+          user_id: string
         }
         Update: {
           accuracy?: number
@@ -59,6 +61,7 @@ export type Database = {
           score?: number
           total_questions?: number
           updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
