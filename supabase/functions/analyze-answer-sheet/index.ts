@@ -18,10 +18,92 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    console.log("Analyzing answer sheet with AI...");
+    console.log("Validating if image is an answer sheet...");
+    
+    // Step 1: Validate if the image is an answer sheet
+    const validationPrompt = `You are an image classification expert. Analyze this image and determine if it is an answer sheet or exam paper.
+
+An answer sheet typically has:
+- Grid boxes or bubbles for answers
+- Question numbers
+- Answer options (A, B, C, D or similar)
+- Structured layout for recording answers
+- May be handwritten or printed
+
+Respond with ONLY a JSON object in this exact format:
+{
+  "isAnswerSheet": true/false,
+  "reason": "Brief explanation"
+}`;
+
+    const validationResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: validationPrompt },
+              {
+                type: "image_url",
+                image_url: {
+                  url: image,
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!validationResponse.ok) {
+      const errorText = await validationResponse.text();
+      console.error("Validation error:", validationResponse.status, errorText);
+      throw new Error("Failed to validate image");
+    }
+
+    const validationData = await validationResponse.json();
+    const validationResult = validationData.choices[0].message.content;
+    console.log("Validation result:", validationResult);
+
+    // Parse validation response
+    let isAnswerSheet = false;
+    let validationReason = "Could not determine image type";
+    
+    try {
+      const jsonMatch = validationResult.match(/\{[\s\S]*?\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        isAnswerSheet = parsed.isAnswerSheet;
+        validationReason = parsed.reason;
+      }
+    } catch (parseError) {
+      console.error("Failed to parse validation response:", parseError);
+    }
+
+    if (!isAnswerSheet) {
+      console.log("Image is not an answer sheet:", validationReason);
+      return new Response(
+        JSON.stringify({ 
+          error: "Invalid input: The uploaded image does not appear to be an answer sheet. Please upload a valid answer sheet with grid boxes or bubbles for answers.",
+          validationReason
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      );
+    }
+
+    console.log("Image validated as answer sheet. Analyzing answers...");
     console.log("Answer key length:", answerKey.length);
 
-    // Enhanced prompt for grid-based answer sheet detection
+    // Step 2: Enhanced prompt for grid-based answer sheet detection
     const prompt = `You are an advanced OCR system specialized in detecting grid-based answer sheets with expert-level pattern recognition.
 
 TASK: Analyze this grid-based answer sheet and extract handwritten answers from each box with maximum precision.

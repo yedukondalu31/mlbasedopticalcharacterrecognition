@@ -99,6 +99,18 @@ const Index = () => {
 
       if (!response.ok) {
         const error = await response.json();
+        
+        // Special handling for validation errors (400)
+        if (response.status === 400) {
+          toast({
+            title: "Invalid Image",
+            description: error.error || "Please upload a valid answer sheet",
+            variant: "destructive",
+          });
+          setIsProcessing(false);
+          return;
+        }
+        
         throw new Error(error.error || "Failed to analyze answer sheet");
       }
 
