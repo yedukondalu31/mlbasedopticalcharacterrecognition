@@ -1,9 +1,10 @@
-import { CheckCircle, XCircle, Download, RotateCcw, TrendingUp, AlertCircle } from "lucide-react";
+import { CheckCircle, XCircle, Download, RotateCcw, TrendingUp, AlertCircle, Flag, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { EvaluationResult } from "@/pages/Index";
 import { toast } from "@/hooks/use-toast";
+import { useState } from "react";
 
 interface ResultsDashboardProps {
   result: EvaluationResult;
@@ -12,7 +13,32 @@ interface ResultsDashboardProps {
 }
 
 const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardProps) => {
-  const { extractedAnswers, correctAnswers, score, totalQuestions, accuracy, confidence, lowConfidenceCount, detailedResults } = result;
+  const { extractedAnswers, correctAnswers, score, totalQuestions, accuracy, confidence, lowConfidenceCount, detailedResults, qualityIssues, imageQuality } = result;
+  const [feedback, setFeedback] = useState<{[key: number]: 'correct' | 'incorrect' | null}>({});
+  
+  const handleFeedback = (questionNum: number, isCorrect: boolean) => {
+    setFeedback(prev => ({
+      ...prev,
+      [questionNum]: isCorrect ? 'correct' : 'incorrect'
+    }));
+    
+    // Log feedback for model improvement
+    console.log("=== USER FEEDBACK ===");
+    console.log({
+      question: questionNum,
+      userSaysCorrect: isCorrect,
+      extractedAnswer: detailedResults?.[questionNum - 1]?.extracted || extractedAnswers[questionNum - 1],
+      correctAnswer: correctAnswers[questionNum - 1],
+      confidence: detailedResults?.[questionNum - 1]?.confidence,
+      timestamp: new Date().toISOString()
+    });
+    console.log("=== END FEEDBACK ===");
+    
+    toast({
+      title: "Feedback recorded",
+      description: `Thank you! Your feedback helps improve accuracy. ${!isCorrect ? "We'll learn from this error." : ""}`,
+    });
+  };
 
   const handleExport = () => {
     const reportData = {
@@ -65,6 +91,35 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
           </Button>
         </div>
       </div>
+
+      {/* Quality Warnings */}
+      {(qualityIssues && qualityIssues.length > 0) || imageQuality === "poor" || imageQuality === "fair" ? (
+        <Card className="p-4 mb-4 bg-amber-500/10 border-amber-500/30 border-2">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="font-semibold text-sm mb-1 text-amber-900 dark:text-amber-100">Quality Notice</h4>
+              <p className="text-xs text-amber-800 dark:text-amber-200 mb-2">
+                {imageQuality === "poor" 
+                  ? "The image quality is poor. Results may not be fully accurate."
+                  : imageQuality === "fair"
+                  ? "The image quality is fair. Some answers may need verification."
+                  : "Some quality issues were detected during processing."}
+              </p>
+              {qualityIssues && qualityIssues.length > 0 && (
+                <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                  {qualityIssues.map((issue: string, idx: number) => (
+                    <li key={idx}>• {issue}</li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-2 font-medium">
+                💡 Tip: For better accuracy, use good lighting and ensure the paper is flat and straight.
+              </p>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-4 md:mb-6">
         <StatCard
@@ -144,13 +199,37 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/50">
-                      <span className={`text-xs font-semibold ${confidenceColor}`}>
-                        {result.confidence.toUpperCase()}
-                      </span>
-                      {result.note && (
-                        <span className="text-xs text-muted-foreground">• {result.note}</span>
-                      )}
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-semibold ${confidenceColor}`}>
+                          {result.confidence.toUpperCase()}
+                        </span>
+                        {result.note && (
+                          <span className="text-xs text-muted-foreground">• {result.note}</span>
+                        )}
+                      </div>
+                      
+                      {/* Feedback buttons */}
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant={feedback[result.question] === 'correct' ? "default" : "ghost"}
+                          className="h-7 px-2"
+                          onClick={() => handleFeedback(result.question, true)}
+                          title="Mark as correctly extracted"
+                        >
+                          <ThumbsUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={feedback[result.question] === 'incorrect' ? "destructive" : "ghost"}
+                          className="h-7 px-2"
+                          onClick={() => handleFeedback(result.question, false)}
+                          title="Report incorrect extraction"
+                        >
+                          <ThumbsDown className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );

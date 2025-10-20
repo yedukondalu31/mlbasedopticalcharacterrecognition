@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import * as React from "react";
 import { Upload, Image as ImageIcon, X, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -235,17 +236,29 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        } 
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         setShowCamera(true);
+        
+        toast({
+          title: "Camera ready",
+          description: "Position the answer sheet flat and well-lit for best results.",
+        });
       }
     } catch (error) {
+      console.error("Camera error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      
       toast({
         title: "Camera Access Denied",
-        description: "Please allow camera access to take photos.",
+        description: `Please allow camera access in your browser settings. Error: ${errorMessage}`,
         variant: "destructive",
       });
     }
@@ -253,11 +266,26 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
 
   const stopCamera = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log("Camera track stopped:", track.label);
+      });
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setShowCamera(false);
   };
+  
+  // Cleanup camera on unmount
+  React.useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {

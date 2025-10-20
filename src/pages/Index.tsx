@@ -16,7 +16,9 @@ export interface EvaluationResult {
   totalQuestions: number;
   accuracy: number;
   confidence?: string;
+  imageQuality?: string;
   lowConfidenceCount?: number;
+  qualityIssues?: string[];
   detailedResults?: Array<{
     question: number;
     extracted: string;
@@ -25,6 +27,10 @@ export interface EvaluationResult {
     confidence: string;
     note: string;
   }>;
+  metadata?: {
+    timestamp: string;
+    processingNotes: string;
+  };
 }
 
 const Index = () => {
@@ -124,8 +130,11 @@ const Index = () => {
         totalQuestions: result.totalQuestions,
         accuracy: result.accuracy,
         confidence: result.confidence,
+        imageQuality: result.imageQuality,
         lowConfidenceCount: result.lowConfidenceCount,
+        qualityIssues: result.qualityIssues,
         detailedResults: result.detailedResults,
+        metadata: result.metadata,
       };
       
       // Save evaluation to database

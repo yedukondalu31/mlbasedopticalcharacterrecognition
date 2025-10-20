@@ -58,10 +58,12 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    console.log("Validating if image is an answer sheet...");
+    console.log("Validating if image is an answer sheet and checking quality...");
     
-    // Step 1: Validate if the image is an answer sheet
-    const validationPrompt = `You are an image classification expert. Analyze this image and determine if it is an answer sheet or exam paper.
+    // Step 1: Validate if the image is an answer sheet with quality assessment
+    const validationPrompt = `You are an image classification and quality assessment expert. Analyze this image and provide:
+1. Is it an answer sheet?
+2. What is the image quality?
 
 An answer sheet typically has:
 - Grid boxes or bubbles for answers
@@ -77,9 +79,16 @@ NOT answer sheets:
 - Documents without answer grids
 - Blank papers or non-educational content
 
+Image quality assessment:
+- GOOD: Clear, well-lit, sharp, proper orientation, minimal blur
+- FAIR: Readable but has minor issues (slight blur, shadows, or tilt)
+- POOR: Very blurry, dark, heavily skewed, or hard to read
+
 Respond with ONLY a JSON object in this exact format:
 {
   "isAnswerSheet": true/false,
+  "quality": "good" | "fair" | "poor",
+  "qualityIssues": ["issue1", "issue2"],
   "reason": "Brief explanation"
 }`;
 
@@ -120,6 +129,8 @@ Respond with ONLY a JSON object in this exact format:
 
     // Parse validation response
     let isAnswerSheet = false;
+    let imageQuality = "unknown";
+    let qualityIssues: string[] = [];
     let validationReason = "Could not determine image type";
     
     try {
@@ -127,6 +138,8 @@ Respond with ONLY a JSON object in this exact format:
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         isAnswerSheet = parsed.isAnswerSheet;
+        imageQuality = parsed.quality || "unknown";
+        qualityIssues = parsed.qualityIssues || [];
         validationReason = parsed.reason;
       }
     } catch (parseError) {
@@ -147,7 +160,9 @@ Respond with ONLY a JSON object in this exact format:
       );
     }
 
-    console.log("Image validated as answer sheet. Analyzing answers...");
+    console.log("Image validated as answer sheet. Quality:", imageQuality);
+    console.log("Quality issues:", qualityIssues);
+    console.log("Analyzing answers...");
     console.log("Answer key length:", answerKey.length);
 
     // Step 2: Enhanced prompt for grid-based answer sheet detection
@@ -360,8 +375,37 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
     const avgConfidence = lowConfidenceCount === 0 ? "high" : 
                          lowConfidenceCount < totalQuestions / 2 ? "medium" : "low";
 
+    // Log comprehensive error analysis for model improvement
+    console.log("=== ERROR ANALYSIS LOG ===");
+    console.log("Overall Confidence:", avgConfidence);
+    console.log("Low Confidence Count:", lowConfidenceCount);
+    console.log("Quality Issues:", qualityIssues);
+    console.log("Image Quality:", imageQuality);
+    
+    if (lowConfidenceCount > 0) {
+      const lowConfAnswers = detailedResults.filter(r => r.confidence === "low");
+      console.log("Low Confidence Answers:", lowConfAnswers.map(a => ({
+        question: a.question,
+        extracted: a.extracted,
+        note: a.note
+      })));
+    }
+    
+    const incorrectAnswers = detailedResults.filter(r => !r.isCorrect);
+    if (incorrectAnswers.length > 0) {
+      console.log("Incorrect Answers Analysis:", incorrectAnswers.map(a => ({
+        question: a.question,
+        extracted: a.extracted,
+        correct: a.correct,
+        confidence: a.confidence,
+        note: a.note
+      })));
+    }
+    console.log("=== END ERROR ANALYSIS ===");
+
     console.log(`Evaluation complete: ${correctCount}/${totalQuestions} correct, avg confidence: ${avgConfidence}`);
 
+    // Return results (NO IMAGE DATA STORED - only extracted text and metadata)
     return new Response(
       JSON.stringify({
         extractedAnswers,
@@ -370,8 +414,16 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
         totalQuestions: totalQuestions,
         accuracy: Math.round(accuracy * 10) / 10,
         confidence: avgConfidence,
+        imageQuality,
         lowConfidenceCount,
+        qualityIssues,
         detailedResults,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          processingNotes: qualityIssues.length > 0 
+            ? "Some quality issues detected. Results may need verification."
+            : "Processing completed successfully."
+        }
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
