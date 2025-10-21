@@ -22,20 +22,23 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
 
   const handleNumQuestionsChange = (value: string) => {
     const num = parseInt(value) || 0;
-    if (num > 0 && num <= 100) {
+    // Allow 0 to 200 questions
+    if (num >= 0 && num <= 200) {
       setNumQuestions(num);
       setAnswers(Array(num).fill(''));
     }
   };
 
   const handleGridDimensionChange = (newRows: number, newCols: number) => {
-    const totalQuestions = newRows * newCols;
-    if (totalQuestions > 0 && totalQuestions <= 100) {
-      setRows(newRows);
-      setColumns(newCols);
-      setNumQuestions(totalQuestions);
-      setAnswers(Array(totalQuestions).fill(''));
-    }
+    // Allow any non-negative values including 0
+    const safeRows = Math.max(0, newRows);
+    const safeCols = Math.max(0, newCols);
+    const totalQuestions = safeRows * safeCols;
+    
+    setRows(safeRows);
+    setColumns(safeCols);
+    setNumQuestions(totalQuestions);
+    setAnswers(Array(Math.max(0, totalQuestions)).fill(''));
   };
 
   const handleAnswerChange = (index: number, value: string) => {
@@ -48,6 +51,15 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
   };
 
   const handleSubmit = () => {
+    if (numQuestions === 0) {
+      toast({
+        title: "No questions configured",
+        description: "Please set at least 1 question to evaluate",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     const filledAnswers = answers.filter(a => a !== '');
     
     if (filledAnswers.length !== numQuestions) {
@@ -120,10 +132,10 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
                   <Input
                     id="rows"
                     type="number"
-                    min="1"
-                    max="20"
+                    min="0"
+                    max="50"
                     value={rows}
-                    onChange={(e) => handleGridDimensionChange(parseInt(e.target.value) || 1, columns)}
+                    onChange={(e) => handleGridDimensionChange(parseInt(e.target.value) || 0, columns)}
                     className="mt-1"
                   />
                 </div>
@@ -132,15 +144,22 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
                   <Input
                     id="columns"
                     type="number"
-                    min="1"
-                    max="20"
+                    min="0"
+                    max="50"
                     value={columns}
-                    onChange={(e) => handleGridDimensionChange(rows, parseInt(e.target.value) || 1)}
+                    onChange={(e) => handleGridDimensionChange(rows, parseInt(e.target.value) || 0)}
                     className="mt-1"
                   />
                 </div>
                 <div className="flex-1 min-w-[120px]">
-                  <Label>Total: {rows} × {columns} = {numQuestions}</Label>
+                  <Label className={numQuestions === 0 ? "text-muted-foreground" : ""}>
+                    Total: {rows} × {columns} = {numQuestions}
+                  </Label>
+                  {numQuestions === 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      Set rows and columns to create questions
+                    </p>
+                  )}
                 </div>
               </>
             ) : (
@@ -149,12 +168,17 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
                 <Input
                   id="num-questions"
                   type="number"
-                  min="1"
-                  max="100"
+                  min="0"
+                  max="200"
                   value={numQuestions}
                   onChange={(e) => handleNumQuestionsChange(e.target.value)}
                   className="mt-1"
                 />
+                {numQuestions === 0 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    Set to at least 1 to create answer fields
+                  </p>
+                )}
               </div>
             )}
             
@@ -170,7 +194,17 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
             <Label className="text-sm md:text-base font-semibold mb-2 md:mb-3 block">
               Answer Key (A, B, C, or D) {gridMode && `- ${rows}×${columns}`}
             </Label>
-            {gridMode ? (
+            {numQuestions === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <p className="text-lg mb-2">No questions configured</p>
+                <p className="text-sm">
+                  {gridMode 
+                    ? "Set rows and columns above to create answer fields"
+                    : "Set number of questions above to create answer fields"
+                  }
+                </p>
+              </div>
+            ) : gridMode ? (
               <div className="space-y-2">
                 {Array.from({ length: rows }).map((_, rowIndex) => (
                   <div key={rowIndex} className="flex gap-2 justify-center">
