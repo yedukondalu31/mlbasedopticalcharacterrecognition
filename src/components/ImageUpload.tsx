@@ -370,7 +370,8 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
           >
             <input
               type="file"
-              accept=".jpg,.jpeg,.png"
+              accept=".jpg,.jpeg,.png,image/jpeg,image/jpg,image/png"
+              capture="environment"
               onChange={handleFileInput}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               id="file-upload"
@@ -402,10 +403,14 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
                 <Button variant="outline" size="lg" asChild>
                   <label htmlFor="file-upload" className="cursor-pointer">
                     <ImageIcon className="mr-2 h-5 w-5" />
-                    Choose Image
+                    Upload/Camera
                   </label>
                 </Button>
               </div>
+              
+              <p className="text-xs text-center text-muted-foreground mt-3">
+                "Upload/Camera" button opens your device camera or gallery
+              </p>
             </div>
           </div>
         ) : (
