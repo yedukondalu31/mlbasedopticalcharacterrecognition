@@ -12,6 +12,8 @@ import { supabase } from "@/integrations/supabase/client";
 export interface EvaluationResult {
   extractedAnswers: string[];
   correctAnswers: string[];
+  rollNumber?: string | null;
+  gridConfig?: { rows: number; columns: number };
   score: number;
   totalQuestions: number;
   accuracy: number;
@@ -68,10 +70,10 @@ const Index = () => {
     });
   };
 
-  const handleAnswerKeySubmit = (answers: string[]) => {
+  const handleAnswerKeySubmit = (answers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean) => {
     setAnswerKey(answers);
     if (uploadedImage) {
-      processAnswerSheet(answers);
+      processAnswerSheet(answers, gridConfig, detectRollNumber);
     } else {
       toast({
         title: "Please upload an image first",
@@ -80,7 +82,7 @@ const Index = () => {
     }
   };
 
-  const processAnswerSheet = async (correctAnswers: string[]) => {
+  const processAnswerSheet = async (correctAnswers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean) => {
     setIsProcessing(true);
     
     try {
@@ -100,6 +102,8 @@ const Index = () => {
           body: JSON.stringify({
             image: uploadedImage,
             answerKey: correctAnswers,
+            gridConfig,
+            detectRollNumber,
           }),
         }
       );
@@ -126,6 +130,8 @@ const Index = () => {
       const evaluationResult: EvaluationResult = {
         extractedAnswers: result.extractedAnswers,
         correctAnswers: result.correctAnswers,
+        rollNumber: result.rollNumber,
+        gridConfig: result.gridConfig,
         score: result.score,
         totalQuestions: result.totalQuestions,
         accuracy: result.accuracy,
@@ -146,6 +152,9 @@ const Index = () => {
           answer_key: correctAnswers,
           extracted_answers: result.extractedAnswers,
           correct_answers: result.correctAnswers,
+          roll_number: result.rollNumber,
+          grid_rows: gridConfig?.rows,
+          grid_columns: gridConfig?.columns,
           score: result.score,
           total_questions: result.totalQuestions,
           accuracy: result.accuracy,
@@ -165,12 +174,13 @@ const Index = () => {
       
       setEvaluationResult(evaluationResult);
       
+      const rollInfo = result.rollNumber ? ` | Roll: ${result.rollNumber}` : "";
       const confidenceText = result.confidence === "high" ? "High confidence" : 
                             result.confidence === "medium" ? "Medium confidence" : "Low confidence";
       
       toast({
         title: "Evaluation complete!",
-        description: `Score: ${result.score}/${result.totalQuestions} (${result.accuracy}%) - ${confidenceText}`,
+        description: `Score: ${result.score}/${result.totalQuestions} (${result.accuracy}%)${rollInfo} - ${confidenceText}`,
       });
     } catch (error) {
       console.error("Error processing answer sheet:", error);

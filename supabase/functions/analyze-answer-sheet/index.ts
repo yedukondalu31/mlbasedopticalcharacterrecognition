@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { image, answerKey } = await req.json();
+    const { image, answerKey, gridConfig, detectRollNumber } = await req.json();
     
     // Input validation
     if (!image || typeof image !== 'string') {
@@ -162,19 +162,122 @@ Respond with ONLY a JSON object in this exact format:
 
     console.log("Image validated as answer sheet. Quality:", imageQuality);
     console.log("Quality issues:", qualityIssues);
+    console.log("Grid configuration:", gridConfig);
+    console.log("Detect roll number:", detectRollNumber);
+    
+    // Step 2: Extract roll number if requested
+    let rollNumber = null;
+    if (detectRollNumber) {
+      console.log("Extracting roll number from answer sheet...");
+      
+      const rollNumberPrompt = `You are an OCR expert specialized in reading alphanumeric codes from structured forms.
+
+TASK: Extract the roll number from this answer sheet.
+
+ROLL NUMBER CHARACTERISTICS:
+- Located on the RIGHT side of the answer sheet
+- Consists of 10 boxes arranged horizontally or vertically
+- Each box contains ONE character (uppercase letter, lowercase letter, or digit)
+- Characters can be: A-Z, a-z, 0-9
+- May be handwritten or printed
+- Boxes are labeled or positioned in a dedicated "Roll Number" section
+
+EXTRACTION PROTOCOL:
+1. Locate the roll number region (usually has label like "Roll No", "Student ID", "ID Number")
+2. Identify all 10 boxes in sequence (left-to-right or top-to-bottom)
+3. Read each character carefully, distinguishing between:
+   - O (letter) vs 0 (zero)
+   - I (uppercase i) vs l (lowercase L) vs 1 (one)
+   - S vs 5, Z vs 2, B vs 8
+4. Handle corrections, erasures, or overwritten characters
+5. If a box is empty or illegible, use "?" for that position
+
+OUTPUT FORMAT:
+Return ONLY a JSON object:
+{
+  "rollNumber": "ABC1234567",
+  "confidence": "high" | "medium" | "low",
+  "note": "brief explanation of any issues"
+}
+
+CRITICAL RULES:
+- Roll number must be EXACTLY 10 characters
+- Use uppercase for letters
+- Use "?" only for truly illegible characters
+- If roll number region not found or completely illegible, return null
+
+Extract the roll number now with maximum precision.`;
+
+      try {
+        const rollResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: rollNumberPrompt },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: image,
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+
+        if (rollResponse.ok) {
+          const rollData = await rollResponse.json();
+          const rollResult = rollData.choices[0].message.content;
+          console.log("Roll number extraction result:", rollResult);
+          
+          try {
+            const jsonMatch = rollResult.match(/\{[\s\S]*?\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              rollNumber = parsed.rollNumber || null;
+              console.log("Extracted roll number:", rollNumber, "Confidence:", parsed.confidence);
+              if (parsed.note) {
+                console.log("Roll number note:", parsed.note);
+              }
+            }
+          } catch (parseError) {
+            console.error("Failed to parse roll number response:", parseError);
+          }
+        } else {
+          console.error("Roll number extraction failed:", rollResponse.status);
+        }
+      } catch (rollError) {
+        console.error("Error extracting roll number:", rollError);
+      }
+    }
+    
     console.log("Analyzing answers...");
     console.log("Answer key length:", answerKey.length);
 
-    // Step 2: Enhanced prompt for grid-based answer sheet detection
+    // Step 3: Enhanced prompt for grid-based answer sheet detection
+    const gridInfo = gridConfig 
+      ? `Grid Layout: ${gridConfig.rows} rows × ${gridConfig.columns} columns`
+      : "Sequential layout";
+    
     const prompt = `You are an advanced OCR system specialized in detecting grid-based answer sheets with expert-level pattern recognition.
 
 TASK: Analyze this grid-based answer sheet and extract handwritten answers from each box with maximum precision.
 
 CONTEXT:
 - Total questions: ${answerKey.length}
-- Layout: Grid pattern with m×n boxes filled by student
+- Layout: ${gridInfo}
 - Answer format: Single letters (A, B, C, D) or short text in each grid cell
 - Sheet contains a structured grid of answer boxes
+${gridConfig ? `- Grid is ${gridConfig.rows}×${gridConfig.columns}, process row-by-row from left to right` : ""}
 
 GRID DETECTION PROTOCOL:
 1. GRID STRUCTURE ANALYSIS:
@@ -404,12 +507,15 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
     console.log("=== END ERROR ANALYSIS ===");
 
     console.log(`Evaluation complete: ${correctCount}/${totalQuestions} correct, avg confidence: ${avgConfidence}`);
+    console.log("Roll Number:", rollNumber || "Not detected");
 
     // Return results (NO IMAGE DATA STORED - only extracted text and metadata)
     return new Response(
       JSON.stringify({
         extractedAnswers,
         correctAnswers: answerKey,
+        rollNumber,
+        gridConfig,
         score: correctCount,
         totalQuestions: totalQuestions,
         accuracy: Math.round(accuracy * 10) / 10,

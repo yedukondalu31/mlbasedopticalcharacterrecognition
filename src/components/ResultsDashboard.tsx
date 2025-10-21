@@ -13,7 +13,7 @@ interface ResultsDashboardProps {
 }
 
 const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardProps) => {
-  const { extractedAnswers, correctAnswers, score, totalQuestions, accuracy, confidence, lowConfidenceCount, detailedResults, qualityIssues, imageQuality } = result;
+  const { extractedAnswers, correctAnswers, score, totalQuestions, accuracy, confidence, lowConfidenceCount, detailedResults, qualityIssues, imageQuality, rollNumber, gridConfig } = result;
   const [feedback, setFeedback] = useState<{[key: number]: 'correct' | 'incorrect' | null}>({});
   
   const handleFeedback = (questionNum: number, isCorrect: boolean) => {
@@ -43,13 +43,18 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
   const handleExport = () => {
     const reportData = {
       timestamp: new Date().toISOString(),
+      rollNumber: rollNumber || "Not Detected",
+      gridConfiguration: gridConfig ? `${gridConfig.rows}×${gridConfig.columns}` : "Sequential",
       score: `${score}/${totalQuestions}`,
       accuracy: `${accuracy.toFixed(2)}%`,
+      confidence: confidence?.toUpperCase() || "N/A",
+      imageQuality: imageQuality?.toUpperCase() || "N/A",
       answers: extractedAnswers.map((extracted, index) => ({
         question: index + 1,
         extracted,
         correct: correctAnswers[index],
         isCorrect: extracted === correctAnswers[index],
+        confidence: detailedResults?.[index]?.confidence || "unknown",
       })),
     };
 
@@ -57,13 +62,16 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `evaluation-report-${Date.now()}.json`;
+    const filename = rollNumber 
+      ? `evaluation-${rollNumber}-${Date.now()}.json`
+      : `evaluation-report-${Date.now()}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
 
     toast({
       title: "Report exported",
-      description: "Evaluation report downloaded successfully",
+      description: `Evaluation report ${rollNumber ? `for ${rollNumber} ` : ""}downloaded successfully`,
     });
   };
 
@@ -73,6 +81,17 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
         <div className="flex items-start justify-between mb-3">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-1 md:mb-2">Results</h2>
+            {rollNumber && (
+              <div className="flex items-center gap-2 text-primary font-semibold text-lg">
+                <span className="text-muted-foreground text-sm">Roll Number:</span>
+                <span className="font-mono tracking-wider">{rollNumber}</span>
+              </div>
+            )}
+            {gridConfig && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Grid: {gridConfig.rows}×{gridConfig.columns}
+              </p>
+            )}
             <p className="text-sm md:text-base text-muted-foreground hidden sm:block">
               Detailed analysis
             </p>

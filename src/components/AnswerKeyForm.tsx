@@ -7,13 +7,14 @@ import { Key, Play, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface AnswerKeyFormProps {
-  onSubmit: (answers: string[]) => void;
+  onSubmit: (answers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean) => void;
   disabled: boolean;
   isProcessing: boolean;
 }
 
 const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps) => {
   const [gridMode, setGridMode] = useState(false);
+  const [detectRollNumber, setDetectRollNumber] = useState(true);
   const [rows, setRows] = useState(5);
   const [columns, setColumns] = useState(4);
   const [numQuestions, setNumQuestions] = useState(10);
@@ -58,7 +59,8 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
       return;
     }
 
-    onSubmit(answers);
+    const gridConfig = gridMode ? { rows, columns } : undefined;
+    onSubmit(answers, gridConfig, detectRollNumber);
   };
 
   const quickFill = (option: string) => {
@@ -80,6 +82,25 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
 
       <Card className="p-4 md:p-6 bg-gradient-card border-2 transition-all hover:shadow-lg">
         <div className="space-y-4 md:space-y-6">
+          {/* Roll Number Detection */}
+          <div className="flex items-center gap-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
+            <div className="flex items-center gap-2 flex-1">
+              <input
+                id="detect-roll"
+                type="checkbox"
+                checked={detectRollNumber}
+                onChange={(e) => setDetectRollNumber(e.target.checked)}
+                className="w-4 h-4 cursor-pointer accent-primary"
+              />
+              <Label htmlFor="detect-roll" className="cursor-pointer font-medium">
+                Detect Roll Number from Answer Sheet
+              </Label>
+            </div>
+            <div className="text-xs text-muted-foreground hidden sm:block">
+              AI will extract 10-box alphanumeric roll number
+            </div>
+          </div>
+
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
               <Label htmlFor="grid-mode" className="cursor-pointer">Grid Mode</Label>

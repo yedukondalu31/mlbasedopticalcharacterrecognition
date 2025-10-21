@@ -23,9 +23,12 @@ export type Database = {
           created_at: string
           detailed_results: Json | null
           extracted_answers: string[]
+          grid_columns: number | null
+          grid_rows: number | null
           id: string
           image_url: string
           low_confidence_count: number | null
+          roll_number: string | null
           score: number
           total_questions: number
           updated_at: string
@@ -39,9 +42,12 @@ export type Database = {
           created_at?: string
           detailed_results?: Json | null
           extracted_answers: string[]
+          grid_columns?: number | null
+          grid_rows?: number | null
           id?: string
           image_url: string
           low_confidence_count?: number | null
+          roll_number?: string | null
           score: number
           total_questions: number
           updated_at?: string
@@ -55,9 +61,12 @@ export type Database = {
           created_at?: string
           detailed_results?: Json | null
           extracted_answers?: string[]
+          grid_columns?: number | null
+          grid_rows?: number | null
           id?: string
           image_url?: string
           low_confidence_count?: number | null
+          roll_number?: string | null
           score?: number
           total_questions?: number
           updated_at?: string
