@@ -13,6 +13,7 @@ export interface EvaluationResult {
   extractedAnswers: string[];
   correctAnswers: string[];
   rollNumber?: string | null;
+  subjectCode?: string | null;
   gridConfig?: { rows: number; columns: number };
   score: number;
   totalQuestions: number;
@@ -70,10 +71,10 @@ const Index = () => {
     });
   };
 
-  const handleAnswerKeySubmit = (answers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean) => {
+  const handleAnswerKeySubmit = (answers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean, detectSubjectCode?: boolean) => {
     setAnswerKey(answers);
     if (uploadedImage) {
-      processAnswerSheet(answers, gridConfig, detectRollNumber);
+      processAnswerSheet(answers, gridConfig, detectRollNumber, detectSubjectCode);
     } else {
       toast({
         title: "Please upload an image first",
@@ -82,7 +83,7 @@ const Index = () => {
     }
   };
 
-  const processAnswerSheet = async (correctAnswers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean) => {
+  const processAnswerSheet = async (correctAnswers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean, detectSubjectCode?: boolean) => {
     setIsProcessing(true);
     
     try {
@@ -104,6 +105,7 @@ const Index = () => {
             answerKey: correctAnswers,
             gridConfig,
             detectRollNumber,
+            detectSubjectCode,
           }),
         }
       );
@@ -153,6 +155,7 @@ const Index = () => {
           extracted_answers: result.extractedAnswers,
           correct_answers: result.correctAnswers,
           roll_number: result.rollNumber,
+          subject_code: result.subjectCode,
           grid_rows: gridConfig?.rows,
           grid_columns: gridConfig?.columns,
           score: result.score,

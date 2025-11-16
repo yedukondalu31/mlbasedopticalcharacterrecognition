@@ -30,6 +30,7 @@ export type Database = {
           low_confidence_count: number | null
           roll_number: string | null
           score: number
+          subject_code: string | null
           total_questions: number
           updated_at: string
           user_id: string
@@ -49,6 +50,7 @@ export type Database = {
           low_confidence_count?: number | null
           roll_number?: string | null
           score: number
+          subject_code?: string | null
           total_questions: number
           updated_at?: string
           user_id: string
@@ -68,6 +70,7 @@ export type Database = {
           low_confidence_count?: number | null
           roll_number?: string | null
           score?: number
+          subject_code?: string | null
           total_questions?: number
           updated_at?: string
           user_id?: string
