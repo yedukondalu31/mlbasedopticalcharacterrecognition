@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { image, answerKey, gridConfig, detectRollNumber } = await req.json();
+    const { image, answerKey, gridConfig, detectRollNumber, detectSubjectCode } = await req.json();
     
     // Input validation
     if (!image || typeof image !== 'string') {
@@ -257,6 +257,101 @@ Extract the roll number now with maximum precision.`;
         }
       } catch (rollError) {
         console.error("Error extracting roll number:", rollError);
+      }
+    }
+    
+    // Step 3: Extract subject code if requested
+    let subjectCode = null;
+    if (detectSubjectCode) {
+      console.log("Extracting subject code from answer sheet...");
+      
+      const subjectCodePrompt = `You are an OCR expert specialized in reading alphanumeric codes from structured forms.
+
+TASK: Extract the subject code from this answer sheet.
+
+SUBJECT CODE CHARACTERISTICS:
+- Usually located near the TOP of the answer sheet (above or below roll number section)
+- Typically consists of 6-10 boxes arranged horizontally
+- Each box contains ONE character (digit or uppercase letter)
+- Characters can be: 0-9, A-Z
+- May be handwritten or printed
+- Boxes are labeled as "SUBJECT CODE", "COURSE CODE", "PAPER CODE", or similar
+
+EXTRACTION PROTOCOL:
+1. Locate the subject code region (look for labels like "Subject Code", "Course", "Paper ID")
+2. Identify all boxes in sequence (left-to-right)
+3. Read each character carefully, distinguishing between:
+   - O (letter) vs 0 (zero)
+   - I (uppercase i) vs 1 (one)
+   - S vs 5, Z vs 2, B vs 8
+4. Handle corrections, erasures, or overwritten characters
+5. If a box is empty or illegible, use "?" for that position
+
+OUTPUT FORMAT:
+Return ONLY a JSON object:
+{
+  "subjectCode": "CS2301A",
+  "confidence": "high" | "medium" | "low",
+  "note": "brief explanation of any issues"
+}
+
+CRITICAL RULES:
+- Subject code length varies (6-10 characters typically)
+- Use uppercase for letters
+- Use "?" only for truly illegible characters
+- If subject code region not found or completely illegible, return null
+
+Extract the subject code now with maximum precision.`;
+
+      try {
+        const subjectResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: subjectCodePrompt },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: image,
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+
+        if (subjectResponse.ok) {
+          const subjectData = await subjectResponse.json();
+          const subjectResult = subjectData.choices[0].message.content;
+          console.log("Subject code extraction result:", subjectResult);
+          
+          try {
+            const jsonMatch = subjectResult.match(/\{[\s\S]*?\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              subjectCode = parsed.subjectCode || null;
+              console.log("Extracted subject code:", subjectCode, "Confidence:", parsed.confidence);
+              if (parsed.note) {
+                console.log("Subject code note:", parsed.note);
+              }
+            }
+          } catch (parseError) {
+            console.error("Failed to parse subject code response:", parseError);
+          }
+        } else {
+          console.error("Subject code extraction failed:", subjectResponse.status);
+        }
+      } catch (subjectError) {
+        console.error("Error extracting subject code:", subjectError);
       }
     }
     
@@ -515,6 +610,7 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
         extractedAnswers,
         correctAnswers: answerKey,
         rollNumber,
+        subjectCode,
         gridConfig,
         score: correctCount,
         totalQuestions: totalQuestions,
