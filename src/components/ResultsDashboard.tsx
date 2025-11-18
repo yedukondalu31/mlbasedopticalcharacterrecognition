@@ -1,10 +1,12 @@
-import { CheckCircle, XCircle, Download, RotateCcw, TrendingUp, AlertCircle, Flag, ThumbsUp, ThumbsDown } from "lucide-react";
+import { CheckCircle, XCircle, Download, RotateCcw, TrendingUp, AlertCircle, Flag, ThumbsUp, ThumbsDown, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { EvaluationResult } from "@/pages/Index";
 import { toast } from "@/hooks/use-toast";
 import { useState } from "react";
+import * as XLSX from 'xlsx';
+import { supabase } from "@/integrations/supabase/client";
 
 interface ResultsDashboardProps {
   result: EvaluationResult;
@@ -44,6 +46,7 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
     const reportData = {
       timestamp: new Date().toISOString(),
       rollNumber: rollNumber || "Not Detected",
+      subjectCode: result.subjectCode || "Not Detected",
       gridConfiguration: gridConfig ? `${gridConfig.rows}×${gridConfig.columns}` : "Sequential",
       score: `${score}/${totalQuestions}`,
       accuracy: `${accuracy.toFixed(2)}%`,
@@ -75,6 +78,89 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
     });
   };
 
+  const handleExportAllResults = async () => {
+    try {
+      toast({
+        title: "Exporting...",
+        description: "Fetching all evaluations from database",
+      });
+
+      // Fetch all evaluations from database
+      const { data: evaluations, error } = await supabase
+        .from('evaluations')
+        .select('roll_number, subject_code, extracted_answers, correct_answers')
+        .order('subject_code', { ascending: true })
+        .order('roll_number', { ascending: true });
+
+      if (error) throw error;
+
+      if (!evaluations || evaluations.length === 0) {
+        toast({
+          title: "No data found",
+          description: "There are no evaluations to export",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Group by subject code
+      const groupedBySubject: { [key: string]: any[] } = {};
+      evaluations.forEach(evaluation => {
+        const subjectCode = evaluation.subject_code || 'NO_SUBJECT';
+        if (!groupedBySubject[subjectCode]) {
+          groupedBySubject[subjectCode] = [];
+        }
+        
+        // Create row with REGD NO and Q1-Q20
+        const row: any = {
+          'REGD NO': evaluation.roll_number || 'N/A'
+        };
+        
+        // Add Q1 to Q20
+        const maxQuestions = 20;
+        for (let i = 0; i < maxQuestions; i++) {
+          row[`Q${i + 1}`] = evaluation.extracted_answers[i] || '-';
+        }
+        
+        groupedBySubject[subjectCode].push(row);
+      });
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+
+      // Add sheet for each subject
+      Object.keys(groupedBySubject).sort().forEach(subjectCode => {
+        const sheetData = groupedBySubject[subjectCode];
+        const ws = XLSX.utils.json_to_sheet(sheetData);
+        
+        // Set column widths
+        const colWidths = [{ wch: 15 }]; // REGD NO column
+        for (let i = 0; i < 20; i++) {
+          colWidths.push({ wch: 5 }); // Q1-Q20 columns
+        }
+        ws['!cols'] = colWidths;
+        
+        XLSX.utils.book_append_sheet(wb, ws, subjectCode.substring(0, 31)); // Excel sheet name limit
+      });
+
+      // Generate file and download
+      const fileName = `OMR_Results_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
+      toast({
+        title: "Export successful!",
+        description: `Exported ${evaluations.length} evaluations across ${Object.keys(groupedBySubject).length} subjects`,
+      });
+    } catch (error) {
+      console.error("Export error:", error);
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Failed to export results",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <section className="w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="mb-4 md:mb-6">
@@ -97,10 +183,15 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={handleExportAllResults} variant="default" size="sm" className="gap-2 min-h-[40px]">
+            <FileSpreadsheet className="h-4 w-4" />
+            <span className="hidden sm:inline">Export All to Excel</span>
+            <span className="sm:hidden">Export All</span>
+          </Button>
           <Button variant="outline" onClick={handleExport} size="sm" className="flex-1 sm:flex-none min-h-[40px]">
             <Download className="mr-1 md:mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Export</span>
+            <span className="hidden sm:inline">Export JSON</span>
             <span className="sm:hidden">Export</span>
           </Button>
           <Button variant="outline" onClick={onReset} size="sm" className="flex-1 sm:flex-none min-h-[40px]">
