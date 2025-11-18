@@ -1,9 +1,12 @@
-import { ScanSearch, Zap, CheckCircle, TrendingUp, LogOut } from "lucide-react";
+import { ScanSearch, Zap, CheckCircle, TrendingUp, LogOut, History } from "lucide-react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 
 const Hero = ({ session }: { session: Session }) => {
+  const navigate = useNavigate();
+  
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -13,7 +16,16 @@ const Hero = ({ session }: { session: Session }) => {
       <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAxOGMzLjMxNCAwIDYgMi42ODYgNiA2cy0yLjY4NiA2LTYgNi02LTIuNjg2LTYtNiAyLjY4Ni02IDYtNiIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMSkiLz48L2c+PC9zdmc+')] opacity-20"></div>
       
       <div className="container relative mx-auto px-4 py-8 md:py-16">
-        <div className="absolute top-4 right-4">
+        <div className="absolute top-4 right-4 flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => navigate('/history')}
+            className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
+          >
+            <History className="h-4 w-4 mr-2" />
+            History
+          </Button>
           <Button 
             variant="outline" 
             size="sm"
