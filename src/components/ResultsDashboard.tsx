@@ -43,38 +43,66 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
   };
 
   const handleExport = () => {
-    const reportData = {
-      timestamp: new Date().toISOString(),
-      rollNumber: rollNumber || "Not Detected",
-      subjectCode: result.subjectCode || "Not Detected",
-      gridConfiguration: gridConfig ? `${gridConfig.rows}×${gridConfig.columns}` : "Sequential",
-      score: `${score}/${totalQuestions}`,
-      accuracy: `${accuracy.toFixed(2)}%`,
-      confidence: confidence?.toUpperCase() || "N/A",
-      imageQuality: imageQuality?.toUpperCase() || "N/A",
-      answers: extractedAnswers.map((extracted, index) => ({
-        question: index + 1,
-        extracted,
-        correct: correctAnswers[index],
-        isCorrect: extracted === correctAnswers[index],
-        confidence: detailedResults?.[index]?.confidence || "unknown",
-      })),
-    };
+    // Create workbook for current evaluation
+    const wb = XLSX.utils.book_new();
 
-    const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
+    // === EVALUATION SUMMARY ===
+    const summaryData = [
+      { 'Field': 'Roll Number', 'Value': rollNumber || 'Not Detected' },
+      { 'Field': 'Subject Code', 'Value': subjectCode || 'Not Detected' },
+      { 'Field': 'Date & Time', 'Value': new Date().toLocaleString() },
+      { 'Field': 'Grid Configuration', 'Value': gridConfig ? `${gridConfig.rows}×${gridConfig.columns}` : 'Sequential' },
+      { 'Field': '', 'Value': '' },
+      { 'Field': 'Score', 'Value': `${score}/${totalQuestions}` },
+      { 'Field': 'Accuracy', 'Value': `${accuracy.toFixed(2)}%` },
+      { 'Field': 'Confidence', 'Value': confidence?.toUpperCase() || 'N/A' },
+      { 'Field': 'Image Quality', 'Value': imageQuality?.toUpperCase() || 'N/A' },
+      { 'Field': 'Low Confidence Answers', 'Value': lowConfidenceCount || 0 },
+    ];
+    const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+    summaryWs['!cols'] = [{ wch: 25 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+    // === DETAILED ANSWERS ===
+    const answersData = extractedAnswers.map((extracted, index) => ({
+      'Question': index + 1,
+      'Extracted': extracted,
+      'Correct': correctAnswers[index],
+      'Result': extracted === correctAnswers[index] ? '✓ Correct' : '✗ Wrong',
+      'Confidence': detailedResults?.[index]?.confidence?.toUpperCase() || 'UNKNOWN',
+      'Notes': detailedResults?.[index]?.note || '-',
+    }));
+    const answersWs = XLSX.utils.json_to_sheet(answersData);
+    answersWs['!cols'] = [
+      { wch: 10 }, { wch: 10 }, { wch: 10 }, 
+      { wch: 12 }, { wch: 12 }, { wch: 40 }
+    ];
+    XLSX.utils.book_append_sheet(wb, answersWs, 'Detailed Answers');
+
+    // === STATISTICS ===
+    const correctCount = extractedAnswers.filter((ans, idx) => ans === correctAnswers[idx]).length;
+    const wrongCount = totalQuestions - correctCount;
+    const statsData = [
+      { 'Category': 'Correct Answers', 'Count': correctCount, 'Percentage': `${((correctCount / totalQuestions) * 100).toFixed(2)}%` },
+      { 'Category': 'Wrong Answers', 'Count': wrongCount, 'Percentage': `${((wrongCount / totalQuestions) * 100).toFixed(2)}%` },
+      { 'Category': '', 'Count': '', 'Percentage': '' },
+      { 'Category': 'High Confidence', 'Count': detailedResults?.filter(r => r.confidence === 'high').length || 0, 'Percentage': '' },
+      { 'Category': 'Medium Confidence', 'Count': detailedResults?.filter(r => r.confidence === 'medium').length || 0, 'Percentage': '' },
+      { 'Category': 'Low Confidence', 'Count': detailedResults?.filter(r => r.confidence === 'low').length || 0, 'Percentage': '' },
+    ];
+    const statsWs = XLSX.utils.json_to_sheet(statsData);
+    statsWs['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, statsWs, 'Statistics');
+
+    // Generate file and download
     const filename = rollNumber 
-      ? `evaluation-${rollNumber}-${Date.now()}.json`
-      : `evaluation-report-${Date.now()}.json`;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+      ? `Evaluation_${rollNumber}_${subjectCode || 'Unknown'}_${new Date().toISOString().split('T')[0]}.xlsx`
+      : `Evaluation_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
 
     toast({
-      title: "Report exported",
-      description: `Evaluation report ${rollNumber ? `for ${rollNumber} ` : ""}downloaded successfully`,
+      title: "Report exported 📊",
+      description: `Evaluation report ${rollNumber ? `for ${rollNumber} ` : ""}exported as Excel with multiple sheets`,
     });
   };
 
@@ -85,13 +113,14 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
         description: "Fetching all evaluations from database",
       });
 
-      // Fetch all evaluations from database
+      // Fetch all evaluations with complete data
       const { data: evaluations, error } = await supabase
         .from('evaluations')
-        .select('roll_number, subject_code, extracted_answers, correct_answers, user_id')
+        .select('*')
         .eq('user_id', (await supabase.auth.getSession()).data.session?.user.id)
         .order('subject_code', { ascending: true })
-        .order('roll_number', { ascending: true });
+        .order('roll_number', { ascending: true })
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -104,7 +133,45 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
         return;
       }
 
-      // Group by subject code
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+
+      // === SUMMARY SHEET ===
+      const summaryData = [
+        { 'Metric': 'Total Evaluations', 'Value': evaluations.length },
+        { 'Metric': 'Export Date', 'Value': new Date().toLocaleString() },
+        { 'Metric': 'Subjects', 'Value': new Set(evaluations.map(e => e.subject_code || 'N/A')).size },
+        { 'Metric': 'Students', 'Value': new Set(evaluations.map(e => e.roll_number)).size },
+        { 'Metric': '', 'Value': '' },
+        { 'Metric': 'Average Score', 'Value': `${(evaluations.reduce((sum, e) => sum + e.score, 0) / evaluations.length).toFixed(2)}/${evaluations[0]?.total_questions || 'N/A'}` },
+        { 'Metric': 'Average Accuracy', 'Value': `${(evaluations.reduce((sum, e) => sum + e.accuracy, 0) / evaluations.length).toFixed(2)}%` },
+        { 'Metric': 'High Confidence', 'Value': evaluations.filter(e => e.confidence === 'high').length },
+        { 'Metric': 'Medium Confidence', 'Value': evaluations.filter(e => e.confidence === 'medium').length },
+        { 'Metric': 'Low Confidence', 'Value': evaluations.filter(e => e.confidence === 'low').length },
+      ];
+      const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+      summaryWs['!cols'] = [{ wch: 20 }, { wch: 30 }];
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+      // === DETAILED RESULTS SHEET ===
+      const detailedData = evaluations.map(e => ({
+        'Roll Number': e.roll_number || 'N/A',
+        'Subject Code': e.subject_code || 'N/A',
+        'Score': e.score,
+        'Total': e.total_questions,
+        'Accuracy %': Number(e.accuracy).toFixed(2),
+        'Confidence': e.confidence?.toUpperCase() || 'N/A',
+        'Date': new Date(e.created_at).toLocaleDateString(),
+        'Time': new Date(e.created_at).toLocaleTimeString(),
+      }));
+      const detailedWs = XLSX.utils.json_to_sheet(detailedData);
+      detailedWs['!cols'] = [
+        { wch: 15 }, { wch: 15 }, { wch: 8 }, { wch: 8 }, 
+        { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }
+      ];
+      XLSX.utils.book_append_sheet(wb, detailedWs, 'Detailed Results');
+
+      // === SUBJECT-WISE SHEETS WITH ANSWERS ===
       const groupedBySubject: { [key: string]: any[] } = {};
       evaluations.forEach(evaluation => {
         const subjectCode = evaluation.subject_code || 'NO_SUBJECT';
@@ -112,45 +179,89 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
           groupedBySubject[subjectCode] = [];
         }
         
-        // Create row with REGD NO and Q1-Q20
+        const maxQuestions = Math.max(20, evaluation.total_questions || 20);
         const row: any = {
-          'REGD NO': evaluation.roll_number || 'N/A'
+          'REGD NO': evaluation.roll_number || 'N/A',
+          'Date': new Date(evaluation.created_at).toLocaleDateString(),
+          'Score': `${evaluation.score}/${evaluation.total_questions}`,
+          'Accuracy': `${Number(evaluation.accuracy).toFixed(1)}%`,
         };
         
-        // Add Q1 to Q20
-        const maxQuestions = 20;
+        // Add answers Q1-QN
         for (let i = 0; i < maxQuestions; i++) {
-          row[`Q${i + 1}`] = evaluation.extracted_answers[i] || '-';
+          const extracted = evaluation.extracted_answers[i] || '-';
+          const correct = evaluation.correct_answers[i] || '-';
+          const isCorrect = extracted === correct;
+          row[`Q${i + 1}`] = extracted;
+          row[`Q${i + 1}_Status`] = isCorrect ? '✓' : extracted === '-' ? '-' : '✗';
         }
         
         groupedBySubject[subjectCode].push(row);
       });
 
-      // Create workbook
-      const wb = XLSX.utils.book_new();
-
-      // Add sheet for each subject
+      // Add sheets for each subject
       Object.keys(groupedBySubject).sort().forEach(subjectCode => {
         const sheetData = groupedBySubject[subjectCode];
         const ws = XLSX.utils.json_to_sheet(sheetData);
         
         // Set column widths
-        const colWidths = [{ wch: 15 }]; // REGD NO column
-        for (let i = 0; i < 20; i++) {
-          colWidths.push({ wch: 5 }); // Q1-Q20 columns
-        }
-        ws['!cols'] = colWidths;
+        const colWidths = [
+          { wch: 15 }, // REGD NO
+          { wch: 12 }, // Date
+          { wch: 10 }, // Score
+          { wch: 10 }, // Accuracy
+        ];
         
-        XLSX.utils.book_append_sheet(wb, ws, subjectCode.substring(0, 31)); // Excel sheet name limit
+        // Question columns
+        const maxQuestions = Math.max(...sheetData.map(row => {
+          return Object.keys(row).filter(k => k.startsWith('Q') && !k.includes('_Status')).length;
+        }));
+        
+        for (let i = 0; i < maxQuestions; i++) {
+          colWidths.push({ wch: 5 });  // Answer
+          colWidths.push({ wch: 4 });  // Status
+        }
+        
+        ws['!cols'] = colWidths;
+        XLSX.utils.book_append_sheet(wb, ws, subjectCode.substring(0, 31));
       });
 
+      // === ANSWER KEY REFERENCE SHEET ===
+      const answerKeyData: any[] = [];
+      const subjectAnswerKeys = new Map<string, string[]>();
+      
+      evaluations.forEach(e => {
+        const key = e.subject_code || 'NO_SUBJECT';
+        if (!subjectAnswerKeys.has(key)) {
+          subjectAnswerKeys.set(key, e.correct_answers);
+        }
+      });
+      
+      subjectAnswerKeys.forEach((answers, subject) => {
+        const row: any = { 'Subject': subject };
+        answers.forEach((ans, idx) => {
+          row[`Q${idx + 1}`] = ans;
+        });
+        answerKeyData.push(row);
+      });
+      
+      if (answerKeyData.length > 0) {
+        const answerKeyWs = XLSX.utils.json_to_sheet(answerKeyData);
+        const akColWidths = [{ wch: 15 }];
+        for (let i = 0; i < 20; i++) {
+          akColWidths.push({ wch: 5 });
+        }
+        answerKeyWs['!cols'] = akColWidths;
+        XLSX.utils.book_append_sheet(wb, answerKeyWs, 'Answer Keys');
+      }
+
       // Generate file and download
-      const fileName = `OMR_Results_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const fileName = `OMR_Advanced_Results_${new Date().toISOString().split('T')[0]}.xlsx`;
       XLSX.writeFile(wb, fileName);
 
       toast({
-        title: "Export successful!",
-        description: `Exported ${evaluations.length} evaluations across ${Object.keys(groupedBySubject).length} subjects`,
+        title: "Export successful! 📊",
+        description: `Exported ${evaluations.length} evaluations with Summary, Detailed Results, Answer Keys, and ${new Set(evaluations.map(e => e.subject_code || 'N/A')).size} Subject sheets`,
       });
     } catch (error) {
       console.error("Export error:", error);
@@ -180,8 +291,8 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
             <span className="sm:hidden">Export All</span>
           </Button>
           <Button variant="outline" onClick={handleExport} size="sm" className="flex-1 sm:flex-none min-h-[40px]">
-            <Download className="mr-1 md:mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Export JSON</span>
+            <FileSpreadsheet className="mr-1 md:mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">Export Current (Excel)</span>
             <span className="sm:hidden">Export</span>
           </Button>
           <Button variant="outline" onClick={onReset} size="sm" className="flex-1 sm:flex-none min-h-[40px]">
