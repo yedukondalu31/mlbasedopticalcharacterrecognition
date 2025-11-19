@@ -88,7 +88,8 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
       // Fetch all evaluations from database
       const { data: evaluations, error } = await supabase
         .from('evaluations')
-        .select('roll_number, subject_code, extracted_answers, correct_answers')
+        .select('roll_number, subject_code, extracted_answers, correct_answers, user_id')
+        .eq('user_id', (await supabase.auth.getSession()).data.session?.user.id)
         .order('subject_code', { ascending: true })
         .order('roll_number', { ascending: true });
 
