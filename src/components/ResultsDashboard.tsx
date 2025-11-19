@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, Download, RotateCcw, TrendingUp, AlertCircle, Flag, ThumbsUp, ThumbsDown, FileSpreadsheet } from "lucide-react";
+import { CheckCircle, XCircle, Download, RotateCcw, TrendingUp, AlertCircle, Flag, ThumbsUp, ThumbsDown, FileSpreadsheet, User, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -15,7 +15,7 @@ interface ResultsDashboardProps {
 }
 
 const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardProps) => {
-  const { extractedAnswers, correctAnswers, score, totalQuestions, accuracy, confidence, lowConfidenceCount, detailedResults, qualityIssues, imageQuality, rollNumber, gridConfig } = result;
+  const { extractedAnswers, correctAnswers, score, totalQuestions, accuracy, confidence, lowConfidenceCount, detailedResults, qualityIssues, imageQuality, rollNumber, gridConfig, subjectCode } = result;
   const [feedback, setFeedback] = useState<{[key: number]: 'correct' | 'incorrect' | null}>({});
   
   const handleFeedback = (questionNum: number, isCorrect: boolean) => {
@@ -168,17 +168,6 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
         <div className="flex items-start justify-between mb-3">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-1 md:mb-2">Results</h2>
-            {rollNumber && (
-              <div className="flex items-center gap-2 text-primary font-semibold text-lg">
-                <span className="text-muted-foreground text-sm">Roll Number:</span>
-                <span className="font-mono tracking-wider">{rollNumber}</span>
-              </div>
-            )}
-            {gridConfig && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Grid: {gridConfig.rows}×{gridConfig.columns}
-              </p>
-            )}
             <p className="text-sm md:text-base text-muted-foreground hidden sm:block">
               Detailed analysis
             </p>
@@ -202,6 +191,64 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
           </Button>
         </div>
       </div>
+
+      {/* Detection Preview Card */}
+      {(rollNumber || subjectCode) && (
+        <Card className="p-4 md:p-6 mb-4 md:mb-6 bg-gradient-to-br from-primary/5 to-primary/10 border-2 border-primary/20">
+          <div className="flex items-center gap-2 mb-3">
+            <CheckCircle className="h-5 w-5 text-primary" />
+            <h3 className="font-semibold text-foreground">Detected Information</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {rollNumber ? (
+              <div className="flex items-start gap-3 p-3 bg-background/60 rounded-lg border border-border/50">
+                <User className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground mb-1">Roll Number</p>
+                  <p className="font-mono text-lg font-bold text-foreground tracking-wider break-all">
+                    {rollNumber}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg border border-dashed border-border">
+                <User className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground mb-1">Roll Number</p>
+                  <p className="text-sm text-muted-foreground italic">Not detected</p>
+                </div>
+              </div>
+            )}
+
+            {subjectCode ? (
+              <div className="flex items-start gap-3 p-3 bg-background/60 rounded-lg border border-border/50">
+                <BookOpen className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground mb-1">Subject Code</p>
+                  <p className="font-mono text-lg font-bold text-foreground tracking-wider break-all">
+                    {subjectCode}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg border border-dashed border-border">
+                <BookOpen className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground mb-1">Subject Code</p>
+                  <p className="text-sm text-muted-foreground italic">Not detected</p>
+                </div>
+              </div>
+            )}
+          </div>
+          {gridConfig && (
+            <div className="mt-3 pt-3 border-t border-border/30">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium">Grid Configuration:</span> {gridConfig.rows}×{gridConfig.columns}
+              </p>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Quality Warnings */}
       {(qualityIssues && qualityIssues.length > 0) || imageQuality === "poor" || imageQuality === "fair" ? (
