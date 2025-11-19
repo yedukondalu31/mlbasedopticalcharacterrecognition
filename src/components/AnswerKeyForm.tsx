@@ -7,7 +7,7 @@ import { Key, Play, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface AnswerKeyFormProps {
-  onSubmit: (answers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean) => void;
+  onSubmit: (answers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean, detectSubjectCode?: boolean) => void;
   disabled: boolean;
   isProcessing: boolean;
 }
@@ -15,6 +15,7 @@ interface AnswerKeyFormProps {
 const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps) => {
   const [gridMode, setGridMode] = useState(false);
   const [detectRollNumber, setDetectRollNumber] = useState(true);
+  const [detectSubjectCode, setDetectSubjectCode] = useState(true);
   const [rows, setRows] = useState(5);
   const [columns, setColumns] = useState(4);
   const [numQuestions, setNumQuestions] = useState(10);
@@ -72,7 +73,7 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
     }
 
     const gridConfig = gridMode ? { rows, columns } : undefined;
-    onSubmit(answers, gridConfig, detectRollNumber);
+    onSubmit(answers, gridConfig, detectRollNumber, detectSubjectCode);
   };
 
   const quickFill = (option: string) => {
@@ -110,6 +111,25 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
             </div>
             <div className="text-xs text-muted-foreground hidden sm:block">
               AI will extract 10-box alphanumeric roll number
+            </div>
+          </div>
+
+          {/* Subject Code Detection */}
+          <div className="flex items-center gap-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
+            <div className="flex items-center gap-2 flex-1">
+              <input
+                id="detect-subject"
+                type="checkbox"
+                checked={detectSubjectCode}
+                onChange={(e) => setDetectSubjectCode(e.target.checked)}
+                className="w-4 h-4 cursor-pointer accent-primary"
+              />
+              <Label htmlFor="detect-subject" className="cursor-pointer font-medium">
+                Detect Subject Code from Answer Sheet
+              </Label>
+            </div>
+            <div className="text-xs text-muted-foreground hidden sm:block">
+              AI will extract subject/course code
             </div>
           </div>
 
