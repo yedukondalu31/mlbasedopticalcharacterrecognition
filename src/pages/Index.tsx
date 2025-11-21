@@ -400,6 +400,7 @@ const Index = () => {
             items={batchProcessing}
             currentIndex={currentBatchIndex}
             isProcessing={isProcessing}
+            answerKey={answerKey}
           />
         )}
         
