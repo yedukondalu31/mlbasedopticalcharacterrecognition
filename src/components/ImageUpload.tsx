@@ -7,10 +7,12 @@ import { useToast } from "@/hooks/use-toast";
 
 interface ImageUploadProps {
   onImageUpload: (imageUrl: string) => void;
+  onBatchUpload?: (images: { file: File; dataUrl: string }[]) => void;
   currentImage: string | null;
+  isBatchMode?: boolean;
 }
 
-const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
+const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode = false }: ImageUploadProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -224,9 +226,81 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
     setIsDragging(false);
   };
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // Batch upload mode
+    if (isBatchMode && files.length > 1 && onBatchUpload) {
+      const processedImages: { file: File; dataUrl: string }[] = [];
+      
+      toast({
+        title: `Processing ${files.length} images...`,
+        description: "Please wait while we prepare your images",
+      });
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        try {
+          // Validate file
+          const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+          if (!ALLOWED_EXTENSIONS.includes(fileExtension) || !ALLOWED_TYPES.includes(file.type)) {
+            console.warn(`Skipping invalid file: ${file.name}`);
+            continue;
+          }
+
+          if (file.size > MAX_FILE_SIZE || file.size < MIN_FILE_SIZE) {
+            console.warn(`Skipping file with invalid size: ${file.name}`);
+            continue;
+          }
+
+          const isValidSignature = await verifyFileSignature(file);
+          if (!isValidSignature) {
+            console.warn(`Skipping file with invalid signature: ${file.name}`);
+            continue;
+          }
+
+          // Read and compress
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+              try {
+                const originalDataUrl = reader.result as string;
+                const processedDataUrl = await compressImage(originalDataUrl);
+                resolve(processedDataUrl);
+              } catch (error) {
+                reject(error);
+              }
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          processedImages.push({ file, dataUrl });
+        } catch (error) {
+          console.error(`Error processing ${file.name}:`, error);
+        }
+      }
+
+      if (processedImages.length > 0) {
+        onBatchUpload(processedImages);
+        toast({
+          title: `${processedImages.length} images ready`,
+          description: "Now submit the answer key to process all sheets",
+        });
+      } else {
+        toast({
+          title: "No valid images",
+          description: "None of the selected files could be processed",
+          variant: "destructive",
+        });
+      }
+    } else {
+      // Single upload mode
+      const file = files[0];
+      if (file) handleFile(file);
+    }
   };
 
   const handleRemove = () => {
@@ -375,6 +449,7 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
               onChange={handleFileInput}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               id="file-upload"
+              multiple={isBatchMode}
             />
             
             <div className="space-y-4">
@@ -384,13 +459,15 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
               
               <div>
                 <p className="text-lg font-semibold text-foreground mb-1">
-                  Drop your answer sheet here or
+                  {isBatchMode ? 'Drop multiple answer sheets here or' : 'Drop your answer sheet here or'}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  JPG, JPEG, PNG only (Max 10MB)
+                  JPG, JPEG, PNG only (Max 10MB{isBatchMode ? ' each' : ''})
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Files are automatically validated and optimized
+                  {isBatchMode 
+                    ? 'Select multiple files to process an entire class' 
+                    : 'Files are automatically validated and optimized'}
                 </p>
               </div>
 
@@ -403,13 +480,15 @@ const ImageUpload = ({ onImageUpload, currentImage }: ImageUploadProps) => {
                 <Button variant="outline" size="lg" asChild>
                   <label htmlFor="file-upload" className="cursor-pointer">
                     <ImageIcon className="mr-2 h-5 w-5" />
-                    Upload/Camera
+                    {isBatchMode ? 'Select Multiple' : 'Upload/Camera'}
                   </label>
                 </Button>
               </div>
               
               <p className="text-xs text-center text-muted-foreground mt-3">
-                "Upload/Camera" button opens your device camera or gallery
+                {isBatchMode 
+                  ? '"Select Multiple" button lets you choose multiple images from your gallery'
+                  : '"Upload/Camera" button opens your device camera or gallery'}
               </p>
             </div>
           </div>
