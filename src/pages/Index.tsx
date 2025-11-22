@@ -8,7 +8,9 @@ import ResultsDashboard from "@/components/ResultsDashboard";
 import PrivacyNotice from "@/components/PrivacyNotice";
 import BatchProcessor, { BatchProcessingItem } from "@/components/BatchProcessor";
 import { Button } from "@/components/ui/button";
-import { Users, User } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Users, User, Layers, CheckCircle2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -356,18 +358,77 @@ const Index = () => {
       <main className="container mx-auto px-4 py-6 md:py-12 space-y-8 md:space-y-12">
         <PrivacyNotice />
         
-        {/* Mode Toggle */}
-        <div className="flex justify-center">
-          <Button
-            onClick={toggleBatchMode}
-            variant={isBatchMode ? "default" : "outline"}
-            size="lg"
-            className="gap-2"
-          >
-            {isBatchMode ? <Users className="h-5 w-5" /> : <User className="h-5 w-5" />}
-            {isBatchMode ? "Batch Mode (Class)" : "Single Mode"}
-          </Button>
-        </div>
+        {/* Processing Mode Selector */}
+        <Card className="p-6 bg-gradient-to-br from-primary/5 via-primary/3 to-background border-2 border-primary/20">
+          <div className="space-y-4">
+            <div className="text-center">
+              <h2 className="text-xl md:text-2xl font-bold text-foreground mb-2">
+                Choose Processing Mode
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Select how you want to evaluate answer sheets
+              </p>
+            </div>
+            
+            <div className="grid md:grid-cols-2 gap-4 max-w-3xl mx-auto">
+              {/* Single Mode Card */}
+              <button
+                onClick={() => !isBatchMode || toggleBatchMode()}
+                className={`p-6 rounded-lg border-2 transition-all hover:shadow-lg ${
+                  !isBatchMode 
+                    ? 'bg-primary/10 border-primary shadow-md' 
+                    : 'bg-background/50 border-border hover:border-primary/50'
+                }`}
+              >
+                <div className="flex flex-col items-center text-center space-y-3">
+                  <div className={`p-3 rounded-full ${!isBatchMode ? 'bg-primary/20' : 'bg-muted'}`}>
+                    <User className={`h-8 w-8 ${!isBatchMode ? 'text-primary' : 'text-muted-foreground'}`} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg text-foreground mb-1">Single Mode</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Process one answer sheet at a time
+                    </p>
+                  </div>
+                  {!isBatchMode && (
+                    <Badge variant="default" className="gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Active
+                    </Badge>
+                  )}
+                </div>
+              </button>
+
+              {/* Batch Mode Card */}
+              <button
+                onClick={() => isBatchMode || toggleBatchMode()}
+                className={`p-6 rounded-lg border-2 transition-all hover:shadow-lg ${
+                  isBatchMode 
+                    ? 'bg-primary/10 border-primary shadow-md' 
+                    : 'bg-background/50 border-border hover:border-primary/50'
+                }`}
+              >
+                <div className="flex flex-col items-center text-center space-y-3">
+                  <div className={`p-3 rounded-full ${isBatchMode ? 'bg-primary/20' : 'bg-muted'}`}>
+                    <Users className={`h-8 w-8 ${isBatchMode ? 'text-primary' : 'text-muted-foreground'}`} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg text-foreground mb-1">Batch Mode</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Process entire class of answer sheets
+                    </p>
+                  </div>
+                  {isBatchMode && (
+                    <Badge variant="default" className="gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Active
+                    </Badge>
+                  )}
+                </div>
+              </button>
+            </div>
+          </div>
+        </Card>
 
         <ImageUpload 
           onImageUpload={handleImageUpload}
@@ -378,14 +439,24 @@ const Index = () => {
         
         {/* Batch Preview */}
         {batchImages.length > 0 && (
-          <div className="text-center p-4 bg-primary/5 rounded-lg border-2 border-primary/20">
-            <p className="text-lg font-semibold text-foreground">
-              {batchImages.length} answer sheet{batchImages.length !== 1 ? 's' : ''} ready for processing
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Set the answer key below to process all sheets
-            </p>
-          </div>
+          <Card className="p-6 bg-gradient-to-r from-green-500/10 to-blue-500/10 border-2 border-primary/30">
+            <div className="flex items-center justify-center gap-4">
+              <div className="p-3 bg-primary/20 rounded-full">
+                <Layers className="h-6 w-6 text-primary" />
+              </div>
+              <div className="text-left">
+                <p className="text-lg font-bold text-foreground">
+                  {batchImages.length} answer sheet{batchImages.length !== 1 ? 's' : ''} uploaded
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Ready for batch processing - configure answer key below
+                </p>
+              </div>
+              <Badge variant="secondary" className="ml-auto text-base px-4 py-2">
+                {batchImages.length}
+              </Badge>
+            </div>
+          </Card>
         )}
 
         <AnswerKeyForm 
