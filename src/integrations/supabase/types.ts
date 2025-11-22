@@ -77,6 +77,48 @@ export type Database = {
         }
         Relationships: []
       }
+      export_settings: {
+        Row: {
+          created_at: string
+          font_family: string | null
+          footer_text: string | null
+          header_color: string | null
+          id: string
+          include_header: boolean | null
+          include_logo: boolean | null
+          school_logo_url: string | null
+          school_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          font_family?: string | null
+          footer_text?: string | null
+          header_color?: string | null
+          id?: string
+          include_header?: boolean | null
+          include_logo?: boolean | null
+          school_logo_url?: string | null
+          school_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          font_family?: string | null
+          footer_text?: string | null
+          header_color?: string | null
+          id?: string
+          include_header?: boolean | null
+          include_logo?: boolean | null
+          school_logo_url?: string | null
+          school_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

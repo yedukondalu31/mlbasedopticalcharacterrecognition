@@ -3,7 +3,8 @@ import { Progress } from "@/components/ui/progress";
 import { CheckCircle, XCircle, Loader2, FileText, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
-import * as XLSX from 'xlsx';
+import { formatBatchExport } from '@/lib/excelFormatter';
+import { useExportSettings } from '@/hooks/useExportSettings';
 
 export interface BatchProcessingItem {
   fileName: string;
@@ -25,6 +26,7 @@ interface BatchProcessorProps {
 }
 
 const BatchProcessor = ({ items, currentIndex, onCancel, isProcessing, answerKey }: BatchProcessorProps) => {
+  const { settings } = useExportSettings();
   const progress = items.length > 0 ? ((currentIndex) / items.length) * 100 : 0;
   const completedCount = items.filter(item => item.status === 'completed').length;
   const errorCount = items.filter(item => item.status === 'error').length;
@@ -43,110 +45,12 @@ const BatchProcessor = ({ items, currentIndex, onCancel, isProcessing, answerKey
         return;
       }
 
-      // Create workbook
-      const wb = XLSX.utils.book_new();
-
-      // === BATCH SUMMARY SHEET ===
-      const summaryData = [
-        { 'Metric': 'Batch Date', 'Value': new Date().toLocaleString() },
-        { 'Metric': 'Total Sheets Processed', 'Value': items.length },
-        { 'Metric': 'Successful', 'Value': completedCount },
-        { 'Metric': 'Failed', 'Value': errorCount },
-        { 'Metric': '', 'Value': '' },
-        { 'Metric': 'Average Score', 'Value': completedItems.length > 0 
-          ? `${(completedItems.reduce((sum, item) => sum + (item.score || 0), 0) / completedItems.length).toFixed(2)}/${completedItems[0]?.totalQuestions || 'N/A'}`
-          : 'N/A' },
-        { 'Metric': 'Average Accuracy', 'Value': completedItems.length > 0
-          ? `${(completedItems.reduce((sum, item) => sum + (item.accuracy || 0), 0) / completedItems.length).toFixed(2)}%`
-          : 'N/A' },
-        { 'Metric': 'Unique Students', 'Value': new Set(completedItems.map(item => item.rollNumber).filter(Boolean)).size },
-        { 'Metric': 'Unique Subjects', 'Value': new Set(completedItems.map(item => item.subjectCode).filter(Boolean)).size },
-      ];
-      const summaryWs = XLSX.utils.json_to_sheet(summaryData);
-      summaryWs['!cols'] = [{ wch: 25 }, { wch: 30 }];
-      XLSX.utils.book_append_sheet(wb, summaryWs, 'Batch Summary');
-
-      // === ALL RESULTS SHEET ===
-      const allResultsData = completedItems.map(item => ({
-        'File Name': item.fileName,
-        'Roll Number': item.rollNumber || 'N/A',
-        'Subject Code': item.subjectCode || 'N/A',
-        'Score': item.score || 0,
-        'Total': item.totalQuestions || 0,
-        'Accuracy %': item.accuracy ? Number(item.accuracy).toFixed(2) : 'N/A',
-      }));
-      const allResultsWs = XLSX.utils.json_to_sheet(allResultsData);
-      allResultsWs['!cols'] = [
-        { wch: 30 }, { wch: 15 }, { wch: 15 }, 
-        { wch: 8 }, { wch: 8 }, { wch: 12 }
-      ];
-      XLSX.utils.book_append_sheet(wb, allResultsWs, 'All Results');
-
-      // === SUBJECT-WISE SHEETS ===
-      const groupedBySubject: { [key: string]: any[] } = {};
-      completedItems.forEach(item => {
-        const subjectCode = item.subjectCode || 'NO_SUBJECT';
-        if (!groupedBySubject[subjectCode]) {
-          groupedBySubject[subjectCode] = [];
-        }
-        groupedBySubject[subjectCode].push(item);
-      });
-
-      Object.keys(groupedBySubject).sort().forEach(subjectCode => {
-        const sheetData = groupedBySubject[subjectCode].map(item => ({
-          'REGD NO': item.rollNumber || 'N/A',
-          'File Name': item.fileName,
-          'Score': `${item.score}/${item.totalQuestions}`,
-          'Accuracy': `${item.accuracy?.toFixed(1)}%`,
-        }));
-        
-        const ws = XLSX.utils.json_to_sheet(sheetData);
-        ws['!cols'] = [
-          { wch: 15 }, // REGD NO
-          { wch: 30 }, // File Name
-          { wch: 10 }, // Score
-          { wch: 10 }, // Accuracy
-        ];
-        XLSX.utils.book_append_sheet(wb, ws, subjectCode.substring(0, 31));
-      });
-
-      // === ANSWER KEY REFERENCE ===
-      if (answerKey && answerKey.length > 0) {
-        const answerKeyData: any[] = [{ 'Info': 'Answer Key Used' }];
-        const keyRow: any = {};
-        answerKey.forEach((ans, idx) => {
-          keyRow[`Q${idx + 1}`] = ans;
-        });
-        answerKeyData.push(keyRow);
-        
-        const answerKeyWs = XLSX.utils.json_to_sheet(answerKeyData);
-        const akColWidths = [{ wch: 15 }];
-        for (let i = 0; i < answerKey.length; i++) {
-          akColWidths.push({ wch: 5 });
-        }
-        answerKeyWs['!cols'] = akColWidths;
-        XLSX.utils.book_append_sheet(wb, answerKeyWs, 'Answer Key');
-      }
-
-      // === FAILED SHEETS LOG ===
-      if (errorCount > 0) {
-        const failedItems = items.filter(item => item.status === 'error');
-        const failedData = failedItems.map(item => ({
-          'File Name': item.fileName,
-          'Error': item.error || 'Unknown error',
-        }));
-        const failedWs = XLSX.utils.json_to_sheet(failedData);
-        failedWs['!cols'] = [{ wch: 30 }, { wch: 50 }];
-        XLSX.utils.book_append_sheet(wb, failedWs, 'Failed Sheets');
-      }
-
-      // Generate file and download
-      const fileName = `Batch_Results_${new Date().toISOString().split('T')[0]}_${completedCount}students.xlsx`;
-      XLSX.writeFile(wb, fileName);
+      // Use the new formatter with custom settings
+      formatBatchExport(settings, items, answerKey);
 
       toast({
         title: "Batch export successful! 📊",
-        description: `Exported ${completedCount} student results with summary and subject-wise sheets`,
+        description: `Exported ${completedItems.length} student results with custom formatting`,
       });
     } catch (error) {
       console.error("Export error:", error);
