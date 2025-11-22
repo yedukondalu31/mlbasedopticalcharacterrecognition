@@ -7,6 +7,7 @@ import AnswerKeyForm from "@/components/AnswerKeyForm";
 import ResultsDashboard from "@/components/ResultsDashboard";
 import PrivacyNotice from "@/components/PrivacyNotice";
 import BatchProcessor, { BatchProcessingItem } from "@/components/BatchProcessor";
+import ExportSettings from "@/components/ExportSettings";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -357,6 +358,11 @@ const Index = () => {
       
       <main className="container mx-auto px-4 py-6 md:py-12 space-y-8 md:space-y-12">
         <PrivacyNotice />
+        
+        {/* Export Settings */}
+        <div className="flex justify-end">
+          <ExportSettings />
+        </div>
         
         {/* Processing Mode Selector */}
         <Card className="p-6 bg-gradient-to-br from-primary/5 via-primary/3 to-background border-2 border-primary/20">

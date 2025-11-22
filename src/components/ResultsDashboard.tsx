@@ -5,8 +5,10 @@ import { Progress } from "@/components/ui/progress";
 import { EvaluationResult } from "@/pages/Index";
 import { toast } from "@/hooks/use-toast";
 import { useState } from "react";
-import * as XLSX from 'xlsx';
 import { supabase } from "@/integrations/supabase/client";
+import { formatEvaluationExport } from '@/lib/excelFormatter';
+import { useExportSettings } from '@/hooks/useExportSettings';
+import * as XLSX from 'xlsx';
 
 interface ResultsDashboardProps {
   result: EvaluationResult;
@@ -17,6 +19,7 @@ interface ResultsDashboardProps {
 const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardProps) => {
   const { extractedAnswers, correctAnswers, score, totalQuestions, accuracy, confidence, lowConfidenceCount, detailedResults, qualityIssues, imageQuality, rollNumber, gridConfig, subjectCode } = result;
   const [feedback, setFeedback] = useState<{[key: number]: 'correct' | 'incorrect' | null}>({});
+  const { settings } = useExportSettings();
   
   const handleFeedback = (questionNum: number, isCorrect: boolean) => {
     setFeedback(prev => ({
@@ -43,67 +46,35 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
   };
 
   const handleExport = () => {
-    // Create workbook for current evaluation
-    const wb = XLSX.utils.book_new();
+    try {
+      // Use the new formatter with custom settings
+      formatEvaluationExport(settings, {
+        rollNumber,
+        subjectCode,
+        score,
+        totalQuestions,
+        accuracy,
+        confidence,
+        imageQuality,
+        lowConfidenceCount,
+        gridConfig,
+        extractedAnswers,
+        correctAnswers,
+        detailedResults,
+      });
 
-    // === EVALUATION SUMMARY ===
-    const summaryData = [
-      { 'Field': 'Roll Number', 'Value': rollNumber || 'Not Detected' },
-      { 'Field': 'Subject Code', 'Value': subjectCode || 'Not Detected' },
-      { 'Field': 'Date & Time', 'Value': new Date().toLocaleString() },
-      { 'Field': 'Grid Configuration', 'Value': gridConfig ? `${gridConfig.rows}×${gridConfig.columns}` : 'Sequential' },
-      { 'Field': '', 'Value': '' },
-      { 'Field': 'Score', 'Value': `${score}/${totalQuestions}` },
-      { 'Field': 'Accuracy', 'Value': `${accuracy.toFixed(2)}%` },
-      { 'Field': 'Confidence', 'Value': confidence?.toUpperCase() || 'N/A' },
-      { 'Field': 'Image Quality', 'Value': imageQuality?.toUpperCase() || 'N/A' },
-      { 'Field': 'Low Confidence Answers', 'Value': lowConfidenceCount || 0 },
-    ];
-    const summaryWs = XLSX.utils.json_to_sheet(summaryData);
-    summaryWs['!cols'] = [{ wch: 25 }, { wch: 30 }];
-    XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
-
-    // === DETAILED ANSWERS ===
-    const answersData = extractedAnswers.map((extracted, index) => ({
-      'Question': index + 1,
-      'Extracted': extracted,
-      'Correct': correctAnswers[index],
-      'Result': extracted === correctAnswers[index] ? '✓ Correct' : '✗ Wrong',
-      'Confidence': detailedResults?.[index]?.confidence?.toUpperCase() || 'UNKNOWN',
-      'Notes': detailedResults?.[index]?.note || '-',
-    }));
-    const answersWs = XLSX.utils.json_to_sheet(answersData);
-    answersWs['!cols'] = [
-      { wch: 10 }, { wch: 10 }, { wch: 10 }, 
-      { wch: 12 }, { wch: 12 }, { wch: 40 }
-    ];
-    XLSX.utils.book_append_sheet(wb, answersWs, 'Detailed Answers');
-
-    // === STATISTICS ===
-    const correctCount = extractedAnswers.filter((ans, idx) => ans === correctAnswers[idx]).length;
-    const wrongCount = totalQuestions - correctCount;
-    const statsData = [
-      { 'Category': 'Correct Answers', 'Count': correctCount, 'Percentage': `${((correctCount / totalQuestions) * 100).toFixed(2)}%` },
-      { 'Category': 'Wrong Answers', 'Count': wrongCount, 'Percentage': `${((wrongCount / totalQuestions) * 100).toFixed(2)}%` },
-      { 'Category': '', 'Count': '', 'Percentage': '' },
-      { 'Category': 'High Confidence', 'Count': detailedResults?.filter(r => r.confidence === 'high').length || 0, 'Percentage': '' },
-      { 'Category': 'Medium Confidence', 'Count': detailedResults?.filter(r => r.confidence === 'medium').length || 0, 'Percentage': '' },
-      { 'Category': 'Low Confidence', 'Count': detailedResults?.filter(r => r.confidence === 'low').length || 0, 'Percentage': '' },
-    ];
-    const statsWs = XLSX.utils.json_to_sheet(statsData);
-    statsWs['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, statsWs, 'Statistics');
-
-    // Generate file and download
-    const filename = rollNumber 
-      ? `Evaluation_${rollNumber}_${subjectCode || 'Unknown'}_${new Date().toISOString().split('T')[0]}.xlsx`
-      : `Evaluation_${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(wb, filename);
-
-    toast({
-      title: "Report exported 📊",
-      description: `Evaluation report ${rollNumber ? `for ${rollNumber} ` : ""}exported as Excel with multiple sheets`,
-    });
+      toast({
+        title: "Report exported 📊",
+        description: `Evaluation report ${rollNumber ? `for ${rollNumber} ` : ""}exported with custom formatting`,
+      });
+    } catch (error) {
+      console.error("Export error:", error);
+      toast({
+        title: "Export failed",
+        description: "Failed to export evaluation report",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleExportAllResults = async () => {
