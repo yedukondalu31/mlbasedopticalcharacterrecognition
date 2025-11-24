@@ -277,6 +277,254 @@ export const formatEvaluationExport = (
   ];
   formatter.addSheet('Statistics', statsData, [{ wch: 20 }, { wch: 10 }, { wch: 15 }]);
 
+  // Answer Distribution Analysis (for batch exports)
+  const answerDistribution: { [key: string]: number } = {};
+  evaluationData.correctAnswers.forEach((answer) => {
+    answerDistribution[answer] = (answerDistribution[answer] || 0) + 1;
+  });
+
+  const distributionData = [
+    { '': 'Answer Key Distribution', ' ': '', '  ': '' },
+    { '': '', ' ': '', '  ': '' },
+    { '': 'Option', ' ': 'Frequency', '  ': 'Chart' },
+  ];
+
+  ['A', 'B', 'C', 'D', 'E'].forEach((option) => {
+    const count = answerDistribution[option] || 0;
+    const percentage = (count / evaluationData.totalQuestions) * 100;
+    distributionData.push({
+      '': option,
+      ' ': String(count),
+      '  ': '█'.repeat(Math.floor(percentage / 2)),
+    });
+  });
+
+  formatter.addSheet('Answer Distribution', distributionData, [{ wch: 15 }, { wch: 12 }, { wch: 50 }]);
+
+  // Question-wise Performance Analysis
+  const performanceData = evaluationData.extractedAnswers.map((extracted, index) => {
+    const isUnattempted = extracted === 'UNATTEMPTED' || !extracted || extracted === '?';
+    const isCorrect = !isUnattempted && extracted === evaluationData.correctAnswers[index];
+    const confidence = evaluationData.detailedResults?.[index]?.confidence || 'unknown';
+    
+    return {
+      'Q#': index + 1,
+      'Student Answer': extracted,
+      'Correct Answer': evaluationData.correctAnswers[index],
+      'Status': isUnattempted ? 'Unattempted' : (isCorrect ? 'Correct' : 'Wrong'),
+      'Confidence': confidence.toUpperCase(),
+      'Confidence Bar': confidence === 'high' ? '████████████' : confidence === 'medium' ? '████████░░░░' : confidence === 'low' ? '████░░░░░░░░' : '░░░░░░░░░░░░',
+      'Notes': evaluationData.detailedResults?.[index]?.note || '-',
+    };
+  });
+  formatter.addSheet('Question Analysis', performanceData, [
+    { wch: 5 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 15 },
+    { wch: 40 },
+  ]);
+
+  // Common Mistakes Analysis
+  const mistakes = evaluationData.extractedAnswers
+    .map((extracted, idx) => ({
+      question: idx + 1,
+      extracted,
+      correct: evaluationData.correctAnswers[idx],
+      isWrong: extracted && extracted !== 'UNATTEMPTED' && extracted !== '?' && extracted !== evaluationData.correctAnswers[idx],
+    }))
+    .filter((item) => item.isWrong);
+
+  const mistakePatterns: { [key: string]: number } = {};
+  mistakes.forEach((mistake) => {
+    const pattern = `${mistake.extracted} instead of ${mistake.correct}`;
+    mistakePatterns[pattern] = (mistakePatterns[pattern] || 0) + 1;
+  });
+
+  const commonMistakesData = [
+    { Metric: 'Total Wrong Answers', Value: mistakes.length, Percentage: '' },
+    { Metric: 'Most Common Errors', Value: '', Percentage: '' },
+    { Metric: '', Value: '', Percentage: '' },
+  ];
+
+  Object.entries(mistakePatterns)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 10)
+    .forEach(([pattern, count], index) => {
+      commonMistakesData.push({
+        Metric: `#${index + 1}: ${pattern}`,
+        Value: count,
+        Percentage: `${((count / mistakes.length) * 100).toFixed(1)}%`,
+      });
+    });
+
+  if (mistakes.length > 0) {
+    commonMistakesData.push({ Metric: '', Value: '', Percentage: '' });
+    commonMistakesData.push({
+      Metric: 'Wrong Questions',
+      Value: mistakes.map((m) => `Q${m.question}`).join(', '),
+      Percentage: '',
+    });
+  }
+
+  formatter.addSheet('Common Mistakes', commonMistakesData, [{ wch: 30 }, { wch: 10 }, { wch: 12 }]);
+
+  // Confidence Distribution Analysis
+  const highConfCount = evaluationData.detailedResults?.filter((r) => r.confidence === 'high').length || 0;
+  const mediumConfCount = evaluationData.detailedResults?.filter((r) => r.confidence === 'medium').length || 0;
+  const lowConfCount = evaluationData.detailedResults?.filter((r) => r.confidence === 'low').length || 0;
+  const unknownConfCount = evaluationData.totalQuestions - highConfCount - mediumConfCount - lowConfCount;
+
+  const confDistributionData = [
+    { '': 'Confidence Distribution Chart', ' ': '', '  ': '', '   ': '' },
+    { '': '', ' ': '', '  ': '', '   ': '' },
+    {
+      '': 'High',
+      ' ': highConfCount,
+      '  ': `${((highConfCount / evaluationData.totalQuestions) * 100).toFixed(1)}%`,
+      '   ': '█'.repeat(Math.floor((highConfCount / evaluationData.totalQuestions) * 50)),
+    },
+    {
+      '': 'Medium',
+      ' ': mediumConfCount,
+      '  ': `${((mediumConfCount / evaluationData.totalQuestions) * 100).toFixed(1)}%`,
+      '   ': '█'.repeat(Math.floor((mediumConfCount / evaluationData.totalQuestions) * 50)),
+    },
+    {
+      '': 'Low',
+      ' ': lowConfCount,
+      '  ': `${((lowConfCount / evaluationData.totalQuestions) * 100).toFixed(1)}%`,
+      '   ': '█'.repeat(Math.floor((lowConfCount / evaluationData.totalQuestions) * 50)),
+    },
+    ...(unknownConfCount > 0
+      ? [
+          {
+            '': 'Unknown',
+            ' ': unknownConfCount,
+            '  ': `${((unknownConfCount / evaluationData.totalQuestions) * 100).toFixed(1)}%`,
+            '   ': '█'.repeat(Math.floor((unknownConfCount / evaluationData.totalQuestions) * 50)),
+          },
+        ]
+      : []),
+    { '': '', ' ': '', '  ': '', '   ': '' },
+    { '': 'Confidence vs Accuracy', ' ': '', '  ': '', '   ': '' },
+    { '': '', ' ': '', '  ': '', '   ': '' },
+  ];
+
+  // Confidence vs Accuracy Analysis
+  const highConfCorrect = evaluationData.detailedResults?.filter(
+    (r) => r.confidence === 'high' && r.isCorrect
+  ).length || 0;
+  const mediumConfCorrect = evaluationData.detailedResults?.filter(
+    (r) => r.confidence === 'medium' && r.isCorrect
+  ).length || 0;
+  const lowConfCorrect = evaluationData.detailedResults?.filter(
+    (r) => r.confidence === 'low' && r.isCorrect
+  ).length || 0;
+
+  confDistributionData.push(
+    {
+      '': 'Confidence Level',
+      ' ': 'Total',
+      '  ': 'Correct',
+      '   ': 'Accuracy',
+    },
+    {
+      '': 'High',
+      ' ': String(highConfCount),
+      '  ': String(highConfCorrect),
+      '   ': highConfCount > 0 ? `${((highConfCorrect / highConfCount) * 100).toFixed(1)}%` : 'N/A',
+    },
+    {
+      '': 'Medium',
+      ' ': String(mediumConfCount),
+      '  ': String(mediumConfCorrect),
+      '   ': mediumConfCount > 0 ? `${((mediumConfCorrect / mediumConfCount) * 100).toFixed(1)}%` : 'N/A',
+    },
+    {
+      '': 'Low',
+      ' ': String(lowConfCount),
+      '  ': String(lowConfCorrect),
+      '   ': lowConfCount > 0 ? `${((lowConfCorrect / lowConfCount) * 100).toFixed(1)}%` : 'N/A',
+    }
+  );
+
+  formatter.addSheet('Confidence Analysis', confDistributionData, [
+    { wch: 20 },
+    { wch: 10 },
+    { wch: 12 },
+    { wch: 50 },
+  ]);
+
+  // Performance Insights
+  const avgAccuracy = evaluationData.accuracy;
+  const performanceLevel =
+    avgAccuracy >= 90 ? 'Excellent' : avgAccuracy >= 75 ? 'Good' : avgAccuracy >= 60 ? 'Average' : avgAccuracy >= 50 ? 'Below Average' : 'Poor';
+
+  const insightsData = [
+    { Insight: 'Overall Performance', Value: performanceLevel, Recommendation: '' },
+    {
+      Insight: 'Score',
+      Value: `${evaluationData.score}/${evaluationData.totalQuestions}`,
+      Recommendation: '',
+    },
+    { Insight: 'Accuracy', Value: `${avgAccuracy.toFixed(2)}%`, Recommendation: '' },
+    { Insight: '', Value: '', Recommendation: '' },
+    {
+      Insight: 'Attempted Questions',
+      Value: attemptedQuestions,
+      Recommendation:
+        unattemptedCount > 0
+          ? `${unattemptedCount} questions left unattempted. Recommend practicing time management.`
+          : 'All questions attempted.',
+    },
+    {
+      Insight: 'Confidence Level',
+      Value: evaluationData.confidence?.toUpperCase() || 'UNKNOWN',
+      Recommendation:
+        lowConfCount > 5
+          ? 'High number of low-confidence answers. Review fundamentals.'
+          : 'Good confidence overall.',
+    },
+    {
+      Insight: 'Image Quality',
+      Value: evaluationData.imageQuality?.toUpperCase() || 'UNKNOWN',
+      Recommendation:
+        evaluationData.imageQuality === 'poor'
+          ? 'Poor image quality detected. Use better lighting and avoid shadows.'
+          : evaluationData.imageQuality === 'fair'
+            ? 'Image quality is fair. Ensure sheets are flat and well-lit for best results.'
+            : 'Good image quality.',
+    },
+    { Insight: '', Value: '', Recommendation: '' },
+    { Insight: 'Areas for Improvement', Value: '', Recommendation: '' },
+  ];
+
+  if (mistakes.length > 0) {
+    const firstMistake = mistakes[0];
+    insightsData.push({
+      Insight: `Most errors`,
+      Value: mistakes.length,
+      Recommendation: `Review questions: ${mistakes.slice(0, 5).map((m) => m.question).join(', ')}${mistakes.length > 5 ? '...' : ''}`,
+    });
+  }
+
+  if (lowConfCount > 0) {
+    const lowConfQuestions = evaluationData.detailedResults
+      ?.filter((r) => r.confidence === 'low')
+      .slice(0, 5)
+      .map((r) => r.question) || [];
+    insightsData.push({
+      Insight: 'Low Confidence Areas',
+      Value: lowConfCount,
+      Recommendation: `Focus on questions: ${lowConfQuestions.join(', ')}${lowConfCount > 5 ? '...' : ''}`,
+    });
+  }
+
+  formatter.addSheet('Performance Insights', insightsData, [{ wch: 25 }, { wch: 20 }, { wch: 60 }]);
+
   // Generate filename
   const filename = evaluationData.rollNumber
     ? `Evaluation_${evaluationData.rollNumber}_${evaluationData.subjectCode || 'Unknown'}_${
@@ -411,6 +659,88 @@ export const formatBatchExport = (
       Error: item.error || 'Unknown error',
     }));
     formatter.addSheet('Failed Sheets', failedData, [{ wch: 30 }, { wch: 50 }]);
+  }
+
+  // Batch Performance Analytics
+  if (completedItems.length > 0) {
+    const batchAnalyticsData = [
+      { Metric: 'Batch Performance Overview', Value: '', Details: '' },
+      { Metric: '', Value: '', Details: '' },
+      {
+        Metric: 'Highest Score',
+        Value: Math.max(...completedItems.map((i) => i.score || 0)),
+        Details: completedItems.find((i) => i.score === Math.max(...completedItems.map((x) => x.score || 0)))
+          ?.rollNumber || 'N/A',
+      },
+      {
+        Metric: 'Lowest Score',
+        Value: Math.min(...completedItems.map((i) => i.score || 0)),
+        Details: completedItems.find((i) => i.score === Math.min(...completedItems.map((x) => x.score || 0)))
+          ?.rollNumber || 'N/A',
+      },
+      {
+        Metric: 'Median Score',
+        Value: completedItems.length > 0
+          ? completedItems.map((i) => i.score || 0).sort((a, b) => a - b)[Math.floor(completedItems.length / 2)]
+          : 0,
+        Details: '',
+      },
+      { Metric: '', Value: '', Details: '' },
+      {
+        Metric: 'Students >= 90%',
+        Value: completedItems.filter((i) => (i.accuracy || 0) >= 90).length,
+        Details: `${((completedItems.filter((i) => (i.accuracy || 0) >= 90).length / completedItems.length) * 100).toFixed(1)}%`,
+      },
+      {
+        Metric: 'Students >= 75%',
+        Value: completedItems.filter((i) => (i.accuracy || 0) >= 75).length,
+        Details: `${((completedItems.filter((i) => (i.accuracy || 0) >= 75).length / completedItems.length) * 100).toFixed(1)}%`,
+      },
+      {
+        Metric: 'Students >= 60%',
+        Value: completedItems.filter((i) => (i.accuracy || 0) >= 60).length,
+        Details: `${((completedItems.filter((i) => (i.accuracy || 0) >= 60).length / completedItems.length) * 100).toFixed(1)}%`,
+      },
+      {
+        Metric: 'Students < 60%',
+        Value: completedItems.filter((i) => (i.accuracy || 0) < 60).length,
+        Details: `${((completedItems.filter((i) => (i.accuracy || 0) < 60).length / completedItems.length) * 100).toFixed(1)}%`,
+      },
+    ];
+
+    formatter.addSheet('Batch Analytics', batchAnalyticsData, [{ wch: 25 }, { wch: 15 }, { wch: 30 }]);
+
+    // Score Distribution Chart
+    const scoreRanges = {
+      '90-100%': completedItems.filter((i) => (i.accuracy || 0) >= 90).length,
+      '75-89%': completedItems.filter((i) => (i.accuracy || 0) >= 75 && (i.accuracy || 0) < 90).length,
+      '60-74%': completedItems.filter((i) => (i.accuracy || 0) >= 60 && (i.accuracy || 0) < 75).length,
+      '50-59%': completedItems.filter((i) => (i.accuracy || 0) >= 50 && (i.accuracy || 0) < 60).length,
+      'Below 50%': completedItems.filter((i) => (i.accuracy || 0) < 50).length,
+    };
+
+    const scoreDistData = [
+      { '': 'Score Distribution', ' ': '', '  ': '', '   ': '' },
+      { '': '', ' ': '', '  ': '', '   ': '' },
+      { '': 'Range', ' ': 'Count', '  ': 'Percentage', '   ': 'Visual' },
+    ];
+
+    Object.entries(scoreRanges).forEach(([range, count]) => {
+      const percentage = (count / completedItems.length) * 100;
+      scoreDistData.push({
+        '': range,
+        ' ': String(count),
+        '  ': `${percentage.toFixed(1)}%`,
+        '   ': '█'.repeat(Math.floor(percentage / 2)),
+      });
+    });
+
+    formatter.addSheet('Score Distribution', scoreDistData, [
+      { wch: 15 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 50 },
+    ]);
   }
 
   // Generate filename
