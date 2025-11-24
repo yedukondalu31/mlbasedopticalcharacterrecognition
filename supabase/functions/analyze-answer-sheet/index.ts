@@ -355,6 +355,35 @@ Extract the subject code now with maximum precision.`;
       }
     }
     
+    // Check for required credentials only if detection was enabled
+    if (detectRollNumber && !rollNumber) {
+      console.log("Roll number detection was enabled but no roll number was found");
+      return new Response(
+        JSON.stringify({ 
+          error: "Roll number could not be detected from the answer sheet. Please ensure the roll number is clearly filled in all 10 boxes.",
+          validationReason: "Roll number detection enabled but not found"
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      );
+    }
+    
+    if (detectSubjectCode && !subjectCode) {
+      console.log("Subject code detection was enabled but no subject code was found");
+      return new Response(
+        JSON.stringify({ 
+          error: "Subject code could not be detected from the answer sheet. Please ensure the subject code is clearly filled.",
+          validationReason: "Subject code detection enabled but not found"
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      );
+    }
+    
     console.log("Analyzing answers...");
     console.log("Answer key length:", answerKey.length);
 
@@ -370,7 +399,7 @@ TASK: Analyze this grid-based answer sheet and extract handwritten answers from 
 CONTEXT:
 - Total questions: ${answerKey.length}
 - Layout: ${gridInfo}
-- Answer format: Single letters (A, B, C, D) or short text in each grid cell
+- Answer format: Single letters (A, B, C, D, E) or short text in each grid cell
 - Sheet contains a structured grid of answer boxes
 ${gridConfig ? `- Grid is ${gridConfig.rows}×${gridConfig.columns}, process row-by-row from left to right` : ""}
 
@@ -420,8 +449,8 @@ Return a JSON object with this exact structure:
 CRITICAL RULES:
 - Array length must be exactly ${answerKey.length}
 - Process grid boxes in sequential order matching question numbers
-- Use "?" only if a grid box is completely empty or illegible
-- Mark uncertain answers with "low" confidence rather than "?"
+- Use "?" or empty string "" for unattempted questions (empty or completely blank boxes)
+- Mark uncertain answers with "low" confidence
 - Account for grid distortions, shadows, or folds in the paper
 - Return ONLY valid JSON, no additional text
 - Handle cases where the grid may be partially visible or cropped
@@ -540,6 +569,7 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
     // Calculate score with detailed analysis
     let correctCount = 0;
     let lowConfidenceCount = 0;
+    let unattemptedCount = 0;
     const detailedResults: Array<{
       question: number;
       extracted: string;
@@ -547,29 +577,41 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
       isCorrect: boolean;
       confidence: string;
       note: string;
+      status: string;
     }> = [];
     
     extractedAnswers.forEach((extracted, index) => {
       const correct = answerKey[index];
-      const isCorrect = extracted.toLowerCase() === correct.toLowerCase();
+      const isUnattempted = !extracted || extracted === "?" || extracted.trim() === "";
+      const isCorrect = !isUnattempted && extracted.toLowerCase() === correct.toLowerCase();
       const confidence = confidenceLevels[index] || "unknown";
       const note = analysisNotes[index] || "";
       
-      if (isCorrect) correctCount++;
+      let status = "wrong";
+      if (isUnattempted) {
+        status = "unattempted";
+        unattemptedCount++;
+      } else if (isCorrect) {
+        status = "correct";
+        correctCount++;
+      }
+      
       if (confidence === "low") lowConfidenceCount++;
       
       detailedResults.push({
         question: index + 1,
-        extracted,
+        extracted: isUnattempted ? "UNATTEMPTED" : extracted,
         correct,
         isCorrect,
         confidence,
         note,
+        status,
       });
     });
 
     const totalQuestions = answerKey.length;
-    const accuracy = totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 0;
+    const attemptedQuestions = totalQuestions - unattemptedCount;
+    const accuracy = attemptedQuestions > 0 ? (correctCount / attemptedQuestions) * 100 : 0;
     const avgConfidence = lowConfidenceCount === 0 ? "high" : 
                          lowConfidenceCount < totalQuestions / 2 ? "medium" : "low";
 
@@ -601,7 +643,7 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
     }
     console.log("=== END ERROR ANALYSIS ===");
 
-    console.log(`Evaluation complete: ${correctCount}/${totalQuestions} correct, avg confidence: ${avgConfidence}`);
+    console.log(`Evaluation complete: ${correctCount}/${attemptedQuestions} correct (${unattemptedCount} unattempted), avg confidence: ${avgConfidence}`);
     console.log("Roll Number:", rollNumber || "Not detected");
 
     // Return results (NO IMAGE DATA STORED - only extracted text and metadata)
@@ -614,6 +656,8 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
         gridConfig,
         score: correctCount,
         totalQuestions: totalQuestions,
+        attemptedQuestions,
+        unattemptedCount,
         accuracy: Math.round(accuracy * 10) / 10,
         confidence: avgConfidence,
         imageQuality,
@@ -624,6 +668,8 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
           timestamp: new Date().toISOString(),
           processingNotes: qualityIssues.length > 0 
             ? "Some quality issues detected. Results may need verification."
+            : unattemptedCount > 0
+            ? `Processing completed. ${unattemptedCount} question(s) were unattempted.`
             : "Processing completed successfully."
         }
       }),
