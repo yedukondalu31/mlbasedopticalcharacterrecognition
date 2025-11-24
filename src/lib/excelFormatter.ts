@@ -199,14 +199,19 @@ export const formatEvaluationExport = (
   formatter.addSheet('Summary', summaryData, [{ wch: 25 }, { wch: 30 }]);
 
   // Detailed Answers Sheet
-  const answersData = evaluationData.extractedAnswers.map((extracted, index) => ({
-    Question: index + 1,
-    Extracted: extracted,
-    Correct: evaluationData.correctAnswers[index],
-    Result: extracted === evaluationData.correctAnswers[index] ? '✓ Correct' : '✗ Wrong',
-    Confidence: evaluationData.detailedResults?.[index]?.confidence?.toUpperCase() || 'UNKNOWN',
-    Notes: evaluationData.detailedResults?.[index]?.note || '-',
-  }));
+  const answersData = evaluationData.extractedAnswers.map((extracted, index) => {
+    const isUnattempted = extracted === 'UNATTEMPTED' || !extracted || extracted === '?';
+    const isCorrect = !isUnattempted && extracted === evaluationData.correctAnswers[index];
+    
+    return {
+      Question: index + 1,
+      Extracted: extracted,
+      Correct: evaluationData.correctAnswers[index],
+      Result: isUnattempted ? '○ Unattempted' : (isCorrect ? '✓ Correct' : '✗ Wrong'),
+      Confidence: evaluationData.detailedResults?.[index]?.confidence?.toUpperCase() || 'UNKNOWN',
+      Notes: evaluationData.detailedResults?.[index]?.note || '-',
+    };
+  });
   formatter.addSheet('Detailed Answers', answersData, [
     { wch: 10 },
     { wch: 10 },
@@ -217,20 +222,41 @@ export const formatEvaluationExport = (
   ]);
 
   // Statistics Sheet
-  const correctCount = evaluationData.extractedAnswers.filter(
-    (ans, idx) => ans === evaluationData.correctAnswers[idx]
+  const unattemptedCount = evaluationData.extractedAnswers.filter(
+    (ans) => ans === 'UNATTEMPTED' || !ans || ans === '?'
   ).length;
-  const wrongCount = evaluationData.totalQuestions - correctCount;
+  const correctCount = evaluationData.extractedAnswers.filter(
+    (ans, idx) => ans && ans !== 'UNATTEMPTED' && ans !== '?' && ans === evaluationData.correctAnswers[idx]
+  ).length;
+  const wrongCount = evaluationData.totalQuestions - correctCount - unattemptedCount;
+  const attemptedQuestions = evaluationData.totalQuestions - unattemptedCount;
+  
   const statsData = [
+    {
+      Category: 'Total Questions',
+      Count: evaluationData.totalQuestions,
+      Percentage: '100%',
+    },
+    {
+      Category: 'Attempted',
+      Count: attemptedQuestions,
+      Percentage: `${((attemptedQuestions / evaluationData.totalQuestions) * 100).toFixed(2)}%`,
+    },
+    {
+      Category: 'Unattempted',
+      Count: unattemptedCount,
+      Percentage: `${((unattemptedCount / evaluationData.totalQuestions) * 100).toFixed(2)}%`,
+    },
+    { Category: '', Count: '', Percentage: '' },
     {
       Category: 'Correct Answers',
       Count: correctCount,
-      Percentage: `${((correctCount / evaluationData.totalQuestions) * 100).toFixed(2)}%`,
+      Percentage: attemptedQuestions > 0 ? `${((correctCount / attemptedQuestions) * 100).toFixed(2)}%` : 'N/A',
     },
     {
       Category: 'Wrong Answers',
       Count: wrongCount,
-      Percentage: `${((wrongCount / evaluationData.totalQuestions) * 100).toFixed(2)}%`,
+      Percentage: attemptedQuestions > 0 ? `${((wrongCount / attemptedQuestions) * 100).toFixed(2)}%` : 'N/A',
     },
     { Category: '', Count: '', Percentage: '' },
     {

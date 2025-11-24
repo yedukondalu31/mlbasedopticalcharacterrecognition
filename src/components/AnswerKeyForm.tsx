@@ -44,7 +44,7 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
 
   const handleAnswerChange = (index: number, value: string) => {
     const upperValue = value.toUpperCase();
-    if (upperValue === '' || ['A', 'B', 'C', 'D'].includes(upperValue)) {
+    if (upperValue === '' || ['A', 'B', 'C', 'D', 'E'].includes(upperValue)) {
       const newAnswers = [...answers];
       newAnswers[index] = upperValue;
       setAnswers(newAnswers);
@@ -202,17 +202,18 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
               </div>
             )}
             
-            <div className="grid grid-cols-4 gap-2 pt-4 md:pt-6">
+            <div className="grid grid-cols-5 gap-2 pt-4 md:pt-6">
               <Button variant="outline" size="sm" onClick={() => quickFill('A')} className="min-h-[40px]">Fill A</Button>
               <Button variant="outline" size="sm" onClick={() => quickFill('B')} className="min-h-[40px]">Fill B</Button>
               <Button variant="outline" size="sm" onClick={() => quickFill('C')} className="min-h-[40px]">Fill C</Button>
               <Button variant="outline" size="sm" onClick={() => quickFill('D')} className="min-h-[40px]">Fill D</Button>
+              <Button variant="outline" size="sm" onClick={() => quickFill('E')} className="min-h-[40px]">Fill E</Button>
             </div>
           </div>
 
           <div className="border-t pt-4 md:pt-6">
             <Label className="text-sm md:text-base font-semibold mb-2 md:mb-3 block">
-              Answer Key (A, B, C, or D) {gridMode && `- ${rows}×${columns}`}
+              Answer Key (A, B, C, D, or E) {gridMode && `- ${rows}×${columns}`}
             </Label>
             {numQuestions === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
