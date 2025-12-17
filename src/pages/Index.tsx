@@ -11,6 +11,8 @@ import ExportSettings from "@/components/ExportSettings";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Users, User, Layers, CheckCircle2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,6 +54,7 @@ const Index = () => {
   const [batchImages, setBatchImages] = useState<{ file: File; dataUrl: string }[]>([]);
   const [batchProcessing, setBatchProcessing] = useState<BatchProcessingItem[]>([]);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
+  const [expectedStudentCount, setExpectedStudentCount] = useState<number | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -339,6 +342,7 @@ const Index = () => {
     setBatchImages([]);
     setBatchProcessing([]);
     setCurrentBatchIndex(0);
+    setExpectedStudentCount(null);
   };
 
   const toggleBatchMode = () => {
@@ -433,6 +437,28 @@ const Index = () => {
                 </div>
               </button>
             </div>
+
+            {/* Expected Student Count Input - Only show in batch mode */}
+            {isBatchMode && (
+              <div className="max-w-xs mx-auto mt-6 space-y-2">
+                <Label htmlFor="expectedCount" className="text-sm font-medium text-foreground">
+                  Number of Students to Evaluate
+                </Label>
+                <Input
+                  id="expectedCount"
+                  type="number"
+                  min="1"
+                  max="500"
+                  placeholder="Enter expected number of students"
+                  value={expectedStudentCount || ''}
+                  onChange={(e) => setExpectedStudentCount(e.target.value ? parseInt(e.target.value) : null)}
+                  className="text-center"
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  This helps track your progress during batch processing
+                </p>
+              </div>
+            )}
           </div>
         </Card>
 
@@ -478,6 +504,7 @@ const Index = () => {
             currentIndex={currentBatchIndex}
             isProcessing={isProcessing}
             answerKey={answerKey}
+            expectedCount={expectedStudentCount}
           />
         )}
         
