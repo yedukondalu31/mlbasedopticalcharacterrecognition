@@ -55,6 +55,10 @@ const Index = () => {
   const [batchProcessing, setBatchProcessing] = useState<BatchProcessingItem[]>([]);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [expectedStudentCount, setExpectedStudentCount] = useState<number | null>(null);
+  const [isAppendMode, setIsAppendMode] = useState(false);
+  const [lastGridConfig, setLastGridConfig] = useState<{ rows: number; columns: number } | undefined>();
+  const [lastDetectRollNumber, setLastDetectRollNumber] = useState<boolean>(false);
+  const [lastDetectSubjectCode, setLastDetectSubjectCode] = useState<boolean>(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -86,18 +90,39 @@ const Index = () => {
     });
   };
 
-  const handleBatchUpload = (images: { file: File; dataUrl: string }[]) => {
-    setBatchImages(images);
-    setUploadedImage(null);
-    setEvaluationResult(null);
-    setBatchProcessing(images.map(img => ({
-      fileName: img.file.name,
-      status: 'pending' as const,
-    })));
+  const handleBatchUpload = (images: { file: File; dataUrl: string }[], append: boolean = false) => {
+    if (append && batchImages.length > 0) {
+      // Append to existing batch
+      setBatchImages(prev => [...prev, ...images]);
+      setBatchProcessing(prev => [
+        ...prev,
+        ...images.map(img => ({
+          fileName: img.file.name,
+          status: 'pending' as const,
+        }))
+      ]);
+      toast({
+        title: `Added ${images.length} more sheet${images.length !== 1 ? 's' : ''}`,
+        description: `Total: ${batchImages.length + images.length} answer sheets in this batch`,
+      });
+    } else {
+      // Start fresh batch
+      setBatchImages(images);
+      setUploadedImage(null);
+      setEvaluationResult(null);
+      setBatchProcessing(images.map(img => ({
+        fileName: img.file.name,
+        status: 'pending' as const,
+      })));
+    }
   };
 
   const handleAnswerKeySubmit = (answers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean, detectSubjectCode?: boolean) => {
     setAnswerKey(answers);
+    // Save config for later use when adding more sheets
+    setLastGridConfig(gridConfig);
+    setLastDetectRollNumber(detectRollNumber || false);
+    setLastDetectSubjectCode(detectSubjectCode || false);
     
     if (batchImages.length > 0) {
       processBatchAnswerSheets(answers, gridConfig, detectRollNumber, detectSubjectCode);
@@ -110,6 +135,37 @@ const Index = () => {
       });
     }
   };
+
+  // Handler for adding more sheets to the batch
+  const handleAddMoreSheets = () => {
+    setIsAppendMode(true);
+    toast({
+      title: "Add more sheets",
+      description: "Upload additional answer sheets to add to this batch",
+    });
+  };
+
+  // Handler for processing newly added pending sheets
+  const handleProcessNewSheets = () => {
+    if (answerKey.length === 0) {
+      toast({
+        title: "Answer key required",
+        description: "Please submit an answer key first",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Find the first pending sheet index
+    const firstPendingIndex = batchProcessing.findIndex(item => item.status === 'pending');
+    if (firstPendingIndex >= 0) {
+      processBatchAnswerSheets(answerKey, lastGridConfig, lastDetectRollNumber, lastDetectSubjectCode, firstPendingIndex);
+    }
+    setIsAppendMode(false);
+  };
+
+  // Check if there are pending sheets
+  const hasPendingSheets = batchProcessing.some(item => item.status === 'pending');
 
   const processAnswerSheet = async (correctAnswers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean, detectSubjectCode?: boolean) => {
     setIsProcessing(true);
@@ -229,12 +285,22 @@ const Index = () => {
     correctAnswers: string[], 
     gridConfig?: { rows: number; columns: number }, 
     detectRollNumber?: boolean, 
-    detectSubjectCode?: boolean
+    detectSubjectCode?: boolean,
+    startFromIndex: number = 0
   ) => {
     setIsProcessing(true);
-    setCurrentBatchIndex(0);
-
-    for (let i = 0; i < batchImages.length; i++) {
+    setCurrentBatchIndex(startFromIndex);
+    
+    let successCount = 0;
+    let processedInThisRun = 0;
+    
+    // Process only pending items starting from startFromIndex
+    for (let i = startFromIndex; i < batchImages.length; i++) {
+      // Skip already completed or errored items
+      if (batchProcessing[i]?.status === 'completed' || batchProcessing[i]?.status === 'error') {
+        if (batchProcessing[i]?.status === 'completed') successCount++;
+        continue;
+      }
       setCurrentBatchIndex(i);
       
       // Update status to processing
@@ -309,6 +375,9 @@ const Index = () => {
             accuracy: result.accuracy,
           } : item
         ));
+        
+        successCount++;
+        processedInThisRun++;
 
       } catch (error) {
         console.error(`Error processing ${batchImages[i].file.name}:`, error);
@@ -321,16 +390,17 @@ const Index = () => {
             error: error instanceof Error ? error.message : 'Processing failed'
           } : item
         ));
+        processedInThisRun++;
       }
     }
 
     setIsProcessing(false);
     setCurrentBatchIndex(batchImages.length);
+    setIsAppendMode(false);
     
-    const successCount = batchProcessing.filter(item => item.status === 'completed').length;
     toast({
       title: "Batch processing complete!",
-      description: `Successfully processed ${successCount} of ${batchImages.length} answer sheets`,
+      description: `Successfully processed ${successCount} of ${batchImages.length} answer sheets${processedInThisRun < batchImages.length ? ` (${processedInThisRun} new)` : ''}`,
     });
   };
 
@@ -343,6 +413,10 @@ const Index = () => {
     setBatchProcessing([]);
     setCurrentBatchIndex(0);
     setExpectedStudentCount(null);
+    setIsAppendMode(false);
+    setLastGridConfig(undefined);
+    setLastDetectRollNumber(false);
+    setLastDetectSubjectCode(false);
   };
 
   const toggleBatchMode = () => {
@@ -467,6 +541,8 @@ const Index = () => {
           onBatchUpload={handleBatchUpload}
           currentImage={uploadedImage}
           isBatchMode={isBatchMode}
+          appendMode={isAppendMode}
+          onAppendModeChange={setIsAppendMode}
         />
         
         {/* Batch Preview */}
@@ -505,6 +581,9 @@ const Index = () => {
             isProcessing={isProcessing}
             answerKey={answerKey}
             expectedCount={expectedStudentCount}
+            onAddMore={handleAddMoreSheets}
+            onProcessNewSheets={handleProcessNewSheets}
+            hasPendingSheets={hasPendingSheets}
           />
         )}
         
