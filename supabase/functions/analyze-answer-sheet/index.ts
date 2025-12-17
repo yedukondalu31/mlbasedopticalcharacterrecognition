@@ -265,43 +265,61 @@ Extract the roll number now with maximum precision.`;
     if (detectSubjectCode) {
       console.log("Extracting subject code from answer sheet...");
       
-      const subjectCodePrompt = `You are an OCR expert specialized in reading alphanumeric codes from structured forms.
+      const subjectCodePrompt = `You are an OCR expert specialized in reading alphanumeric codes from structured forms and answer sheets.
 
-TASK: Extract the subject code from this answer sheet.
+TASK: Extract the subject code/paper code from this answer sheet.
 
-SUBJECT CODE CHARACTERISTICS:
-- Usually located near the TOP of the answer sheet (above or below roll number section)
-- Typically consists of 6-10 boxes arranged horizontally
-- Each box contains ONE character (digit or uppercase letter)
-- Characters can be: 0-9, A-Z
-- May be handwritten or printed
-- Boxes are labeled as "SUBJECT CODE", "COURSE CODE", "PAPER CODE", or similar
+WHERE TO LOOK (check ALL these areas):
+1. TOP section - header area near the roll number
+2. SIDE margins - left or right side of the paper
+3. Near OMR bubbles - sometimes printed alongside the answer grid
+4. Footer area - bottom of the sheet
+5. Any labeled field containing a code
+
+COMMON LABELS TO SEARCH FOR:
+- "Subject Code", "Sub Code", "Subject", "Subj"
+- "Paper Code", "Paper No", "Paper ID"
+- "Course Code", "Course No", "Course"
+- "Exam Code", "Test Code"
+- "Code", "ID", "No."
+- Any field with boxes containing alphanumeric characters
+
+SUBJECT CODE FORMATS (examples):
+- Pure numbers: "101", "2024", "12345"
+- Letters + numbers: "CS101", "PHY201", "MATH301"
+- With dashes/dots: "CS-101", "PHY.201"
+- Mixed format: "2024CS101", "A2B3C4"
+- Short codes: "A1", "12"
+- Long codes: "SUBCODE2024A1"
 
 EXTRACTION PROTOCOL:
-1. Locate the subject code region (look for labels like "Subject Code", "Course", "Paper ID")
-2. Identify all boxes in sequence (left-to-right)
-3. Read each character carefully, distinguishing between:
-   - O (letter) vs 0 (zero)
-   - I (uppercase i) vs 1 (one)
-   - S vs 5, Z vs 2, B vs 8
-4. Handle corrections, erasures, or overwritten characters
-5. If a box is empty or illegible, use "?" for that position
+1. Scan the ENTIRE document for any labeled code field
+2. Look for boxes, bubbles, or handwritten text near code labels
+3. Read each character carefully:
+   - O (letter) vs 0 (zero) - context helps: "CS0" likely means CS + zero
+   - I (uppercase i) vs 1 (one) vs l (lowercase L)
+   - S vs 5, Z vs 2, B vs 8, G vs 6
+4. Include ALL characters you see (don't truncate)
+5. If handwritten, focus on the filled/marked characters
 
 OUTPUT FORMAT:
 Return ONLY a JSON object:
 {
-  "subjectCode": "CS2301A",
+  "subjectCode": "extracted_code_here",
   "confidence": "high" | "medium" | "low",
-  "note": "brief explanation of any issues"
+  "location": "where you found it (e.g., 'top header', 'left margin')",
+  "note": "any issues or observations"
 }
 
 CRITICAL RULES:
-- Subject code length varies (6-10 characters typically)
+- Subject code can be ANY length (2-20 characters)
+- Return the COMPLETE code exactly as written
 - Use uppercase for letters
 - Use "?" only for truly illegible characters
-- If subject code region not found or completely illegible, return null
+- If NO subject code field exists on this answer sheet, return: {"subjectCode": null, "confidence": "high", "note": "No subject code field found on this answer sheet"}
+- DO NOT confuse roll number with subject code - they are different fields
 
-Extract the subject code now with maximum precision.`;
+Extract the subject code now by carefully examining the ENTIRE answer sheet.`;
 
       try {
         const subjectResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
