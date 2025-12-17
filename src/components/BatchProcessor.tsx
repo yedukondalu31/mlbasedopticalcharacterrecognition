@@ -23,14 +23,19 @@ interface BatchProcessorProps {
   onCancel?: () => void;
   isProcessing: boolean;
   answerKey?: string[];
+  expectedCount?: number | null;
 }
 
-const BatchProcessor = ({ items, currentIndex, onCancel, isProcessing, answerKey }: BatchProcessorProps) => {
+const BatchProcessor = ({ items, currentIndex, onCancel, isProcessing, answerKey, expectedCount }: BatchProcessorProps) => {
   const { settings } = useExportSettings();
-  const progress = items.length > 0 ? ((currentIndex) / items.length) * 100 : 0;
   const completedCount = items.filter(item => item.status === 'completed').length;
   const errorCount = items.filter(item => item.status === 'error').length;
   const isComplete = !isProcessing && currentIndex >= items.length;
+  
+  // Calculate progress based on expected count if provided, otherwise use uploaded count
+  const totalTarget = expectedCount || items.length;
+  const progress = totalTarget > 0 ? (completedCount / totalTarget) * 100 : 0;
+  const remainingCount = totalTarget - completedCount;
 
   const handleExportBatch = () => {
     try {
@@ -90,11 +95,21 @@ const BatchProcessor = ({ items, currentIndex, onCancel, isProcessing, answerKey
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">
-              {completedCount} of {items.length} completed
+              {completedCount} of {totalTarget} students completed
+              {expectedCount && remainingCount > 0 && !isComplete && (
+                <span className="ml-2 text-primary font-medium">
+                  ({remainingCount} remaining)
+                </span>
+              )}
             </span>
-            <span className="font-semibold text-foreground">{Math.round(progress)}%</span>
+            <span className="font-semibold text-foreground">{Math.min(Math.round(progress), 100)}%</span>
           </div>
-          <Progress value={progress} className="h-2" />
+          <Progress value={Math.min(progress, 100)} className="h-2" />
+          {expectedCount && items.length < expectedCount && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {expectedCount - items.length} more answer sheet{expectedCount - items.length !== 1 ? 's' : ''} to upload
+            </p>
+          )}
         </div>
 
         {errorCount > 0 && (
