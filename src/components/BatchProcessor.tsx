@@ -1,10 +1,11 @@
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle, XCircle, Loader2, FileText, FileSpreadsheet } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, FileText, FileSpreadsheet, Plus, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { formatBatchExport } from '@/lib/excelFormatter';
 import { useExportSettings } from '@/hooks/useExportSettings';
+import { Badge } from "@/components/ui/badge";
 
 export interface BatchProcessingItem {
   fileName: string;
@@ -24,9 +25,22 @@ interface BatchProcessorProps {
   isProcessing: boolean;
   answerKey?: string[];
   expectedCount?: number | null;
+  onAddMore?: () => void;
+  onProcessNewSheets?: () => void;
+  hasPendingSheets?: boolean;
 }
 
-const BatchProcessor = ({ items, currentIndex, onCancel, isProcessing, answerKey, expectedCount }: BatchProcessorProps) => {
+const BatchProcessor = ({ 
+  items, 
+  currentIndex, 
+  onCancel, 
+  isProcessing, 
+  answerKey, 
+  expectedCount,
+  onAddMore,
+  onProcessNewSheets,
+  hasPendingSheets
+}: BatchProcessorProps) => {
   const { settings } = useExportSettings();
   const completedCount = items.filter(item => item.status === 'completed').length;
   const errorCount = items.filter(item => item.status === 'error').length;
@@ -77,13 +91,32 @@ const BatchProcessor = ({ items, currentIndex, onCancel, isProcessing, answerKey
               Processing {items.length} answer sheet{items.length !== 1 ? 's' : ''}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {/* Add More Button - Always show when not processing */}
+            {!isProcessing && onAddMore && (
+              <Button onClick={onAddMore} variant="outline" size="sm" className="gap-2">
+                <Plus className="h-4 w-4" />
+                Add More Sheets
+              </Button>
+            )}
+            
+            {/* Process New Sheets Button - Show when there are pending sheets */}
+            {!isProcessing && hasPendingSheets && onProcessNewSheets && (
+              <Button onClick={onProcessNewSheets} variant="default" size="sm" className="gap-2">
+                <Play className="h-4 w-4" />
+                Process New Sheets
+              </Button>
+            )}
+            
+            {/* Export Button */}
             {isComplete && completedCount > 0 && (
               <Button onClick={handleExportBatch} variant="default" size="sm" className="gap-2">
                 <FileSpreadsheet className="h-4 w-4" />
                 Export Batch
               </Button>
             )}
+            
+            {/* Cancel Button */}
             {isProcessing && onCancel && (
               <Button onClick={onCancel} variant="outline" size="sm">
                 Cancel

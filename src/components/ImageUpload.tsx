@@ -7,12 +7,14 @@ import { useToast } from "@/hooks/use-toast";
 
 interface ImageUploadProps {
   onImageUpload: (imageUrl: string) => void;
-  onBatchUpload?: (images: { file: File; dataUrl: string }[]) => void;
+  onBatchUpload?: (images: { file: File; dataUrl: string }[], append?: boolean) => void;
   currentImage: string | null;
   isBatchMode?: boolean;
+  appendMode?: boolean;
+  onAppendModeChange?: (append: boolean) => void;
 }
 
-const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode = false }: ImageUploadProps) => {
+const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode = false, appendMode = false, onAppendModeChange }: ImageUploadProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -284,10 +286,10 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
       }
 
       if (processedImages.length > 0) {
-        onBatchUpload(processedImages);
+        onBatchUpload(processedImages, appendMode);
         toast({
-          title: `${processedImages.length} images ready`,
-          description: "Now submit the answer key to process all sheets",
+          title: appendMode ? `Added ${processedImages.length} more images` : `${processedImages.length} images ready`,
+          description: appendMode ? "Click 'Process New Sheets' to continue" : "Now submit the answer key to process all sheets",
         });
       } else {
         toast({
