@@ -574,118 +574,72 @@ const Index = () => {
 
             {/* Expected Student Count Input - Only show in batch mode */}
             {isBatchMode && (
-              <div className="max-w-xs mx-auto mt-6 space-y-2">
-                <Label htmlFor="expectedCount" className="text-sm font-medium text-foreground">
-                  Number of Students to Evaluate
-                </Label>
-                <Input
-                  id="expectedCount"
-                  type="number"
-                  min="1"
-                  max="500"
-                  placeholder="Enter expected number of students"
-                  value={expectedStudentCount || ''}
-                  onChange={(e) => {
-                    const value = e.target.value ? parseInt(e.target.value) : null;
-                    setExpectedStudentCount(value);
-                    // Auto-scroll to upload section after entering count
-                    if (value && uploadSectionRef.current) {
-                      setTimeout(() => {
-                        uploadSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }, 300);
-                    }
-                  }}
-                  className="text-center"
-                />
-                <p className="text-xs text-muted-foreground text-center">
-                  This helps track your progress during batch processing
-                </p>
+              <div className="max-w-sm mx-auto mt-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="expectedCount" className="text-sm font-medium text-foreground">
+                    Number of Students to Evaluate
+                  </Label>
+                  <Input
+                    id="expectedCount"
+                    type="number"
+                    min="1"
+                    max="500"
+                    placeholder="Enter expected number of students"
+                    value={expectedStudentCount || ''}
+                    onChange={(e) => {
+                      const value = e.target.value ? parseInt(e.target.value) : null;
+                      setExpectedStudentCount(value);
+                    }}
+                    className="text-center text-lg"
+                  />
+                  <p className="text-xs text-muted-foreground text-center">
+                    This helps track your progress during batch processing
+                  </p>
+                </div>
+                
+                {/* Confirmation Button */}
+                {expectedStudentCount && expectedStudentCount > 0 && (
+                  <Button 
+                    onClick={() => navigate('/batch', { state: { expectedCount: expectedStudentCount } })}
+                    className="w-full gap-2"
+                    size="lg"
+                  >
+                    <Users className="h-5 w-5" />
+                    Start Batch Processing ({expectedStudentCount} students)
+                  </Button>
+                )}
               </div>
             )}
           </div>
         </Card>
 
-        {/* Batch Status Indicator - Show upload progress before images are uploaded */}
-        {isBatchMode && batchImages.length === 0 && (
-          <Card className="p-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-2 border-amber-500/30">
-            <div className="flex items-center justify-center gap-4">
-              <div className="p-3 bg-amber-500/20 rounded-full">
-                <Layers className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div className="text-left">
-                <p className="text-lg font-bold text-foreground">
-                  0 of {expectedStudentCount || '?'} sheets uploaded
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Upload answer sheets below to get started
-                </p>
-              </div>
-              <Badge variant="outline" className="ml-auto text-base px-4 py-2 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                Waiting
-              </Badge>
+        {!isBatchMode && (
+          <>
+            <div ref={uploadSectionRef}>
+              <ImageUpload 
+                onImageUpload={handleImageUpload}
+                onBatchUpload={handleBatchUpload}
+                currentImage={uploadedImage}
+                isBatchMode={isBatchMode}
+                appendMode={isAppendMode}
+                onAppendModeChange={setIsAppendMode}
+              />
             </div>
-          </Card>
-        )}
-
-        <div ref={uploadSectionRef}>
-          <ImageUpload 
-            onImageUpload={handleImageUpload}
-            onBatchUpload={handleBatchUpload}
-            currentImage={uploadedImage}
-            isBatchMode={isBatchMode}
-            appendMode={isAppendMode}
-            onAppendModeChange={setIsAppendMode}
-          />
-        </div>
-        
-        {/* Batch Preview */}
-        {batchImages.length > 0 && (
-          <Card className="p-6 bg-gradient-to-r from-green-500/10 to-blue-500/10 border-2 border-primary/30">
-            <div className="flex items-center justify-center gap-4">
-              <div className="p-3 bg-primary/20 rounded-full">
-                <Layers className="h-6 w-6 text-primary" />
-              </div>
-              <div className="text-left">
-                <p className="text-lg font-bold text-foreground">
-                  {batchImages.length} answer sheet{batchImages.length !== 1 ? 's' : ''} uploaded
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Ready for batch processing - configure answer key below
-                </p>
-              </div>
-              <Badge variant="secondary" className="ml-auto text-base px-4 py-2">
-                {batchImages.length}
-              </Badge>
-            </div>
-          </Card>
-        )}
-
-        <AnswerKeyForm 
-          onSubmit={handleAnswerKeySubmit}
-          disabled={(!uploadedImage && batchImages.length === 0) || isProcessing}
-          isProcessing={isProcessing}
-        />
-
-        {/* Batch Processing Progress */}
-        {batchProcessing.length > 0 && (
-          <BatchProcessor
-            items={batchProcessing}
-            currentIndex={currentBatchIndex}
-            isProcessing={isProcessing}
-            answerKey={answerKey}
-            expectedCount={expectedStudentCount}
-            onAddMore={handleAddMoreSheets}
-            onProcessNewSheets={handleProcessNewSheets}
-            hasPendingSheets={hasPendingSheets}
-          />
-        )}
-        
-        {evaluationResult && (
-          <ResultsDashboard 
-            result={evaluationResult}
-            uploadedImage={uploadedImage}
-            onReset={handleReset}
-          />
+            
+            <AnswerKeyForm 
+              onSubmit={handleAnswerKeySubmit}
+              disabled={!uploadedImage || isProcessing}
+              isProcessing={isProcessing}
+            />
+            
+            {evaluationResult && (
+              <ResultsDashboard 
+                result={evaluationResult}
+                uploadedImage={uploadedImage}
+                onReset={handleReset}
+              />
+            )}
+          </>
         )}
       </main>
     </div>
