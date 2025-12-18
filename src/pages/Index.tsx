@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Session } from "@supabase/supabase-js";
 import Hero from "@/components/Hero";
@@ -59,6 +59,7 @@ const Index = () => {
   const [lastGridConfig, setLastGridConfig] = useState<{ rows: number; columns: number } | undefined>();
   const [lastDetectRollNumber, setLastDetectRollNumber] = useState<boolean>(false);
   const [lastDetectSubjectCode, setLastDetectSubjectCode] = useState<boolean>(false);
+  const uploadSectionRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -584,7 +585,16 @@ const Index = () => {
                   max="500"
                   placeholder="Enter expected number of students"
                   value={expectedStudentCount || ''}
-                  onChange={(e) => setExpectedStudentCount(e.target.value ? parseInt(e.target.value) : null)}
+                  onChange={(e) => {
+                    const value = e.target.value ? parseInt(e.target.value) : null;
+                    setExpectedStudentCount(value);
+                    // Auto-scroll to upload section after entering count
+                    if (value && uploadSectionRef.current) {
+                      setTimeout(() => {
+                        uploadSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 300);
+                    }
+                  }}
                   className="text-center"
                 />
                 <p className="text-xs text-muted-foreground text-center">
@@ -617,14 +627,16 @@ const Index = () => {
           </Card>
         )}
 
-        <ImageUpload 
-          onImageUpload={handleImageUpload}
-          onBatchUpload={handleBatchUpload}
-          currentImage={uploadedImage}
-          isBatchMode={isBatchMode}
-          appendMode={isAppendMode}
-          onAppendModeChange={setIsAppendMode}
-        />
+        <div ref={uploadSectionRef}>
+          <ImageUpload 
+            onImageUpload={handleImageUpload}
+            onBatchUpload={handleBatchUpload}
+            currentImage={uploadedImage}
+            isBatchMode={isBatchMode}
+            appendMode={isAppendMode}
+            onAppendModeChange={setIsAppendMode}
+          />
+        </div>
         
         {/* Batch Preview */}
         {batchImages.length > 0 && (
