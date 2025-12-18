@@ -595,6 +595,28 @@ const Index = () => {
           </div>
         </Card>
 
+        {/* Batch Status Indicator - Show upload progress before images are uploaded */}
+        {isBatchMode && batchImages.length === 0 && (
+          <Card className="p-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-2 border-amber-500/30">
+            <div className="flex items-center justify-center gap-4">
+              <div className="p-3 bg-amber-500/20 rounded-full">
+                <Layers className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="text-left">
+                <p className="text-lg font-bold text-foreground">
+                  0 of {expectedStudentCount || '?'} sheets uploaded
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Upload answer sheets below to get started
+                </p>
+              </div>
+              <Badge variant="outline" className="ml-auto text-base px-4 py-2 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                Waiting
+              </Badge>
+            </div>
+          </Card>
+        )}
+
         <ImageUpload 
           onImageUpload={handleImageUpload}
           onBatchUpload={handleBatchUpload}
