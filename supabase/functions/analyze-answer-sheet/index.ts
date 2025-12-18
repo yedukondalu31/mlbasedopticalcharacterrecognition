@@ -5,12 +5,56 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// In-memory rate limiting (resets on edge function restart)
+const requestLog = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+const MAX_REQUESTS_PER_MINUTE = 15; // Allow reasonable batch processing
+
+function checkRateLimit(identifier: string): { allowed: boolean; remaining: number; resetIn: number } {
+  const now = Date.now();
+  const userRequests = requestLog.get(identifier) || [];
+  const recentRequests = userRequests.filter(time => now - time < RATE_LIMIT_WINDOW_MS);
+  
+  if (recentRequests.length >= MAX_REQUESTS_PER_MINUTE) {
+    const oldestRequest = Math.min(...recentRequests);
+    const resetIn = Math.ceil((oldestRequest + RATE_LIMIT_WINDOW_MS - now) / 1000);
+    return { allowed: false, remaining: 0, resetIn };
+  }
+  
+  recentRequests.push(now);
+  requestLog.set(identifier, recentRequests);
+  return { allowed: true, remaining: MAX_REQUESTS_PER_MINUTE - recentRequests.length, resetIn: 0 };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // Extract user identifier for rate limiting
+    const authHeader = req.headers.get('Authorization');
+    const userIdentifier = authHeader?.replace('Bearer ', '').substring(0, 32) || 'anonymous';
+    
+    // Check rate limit
+    const rateLimitResult = checkRateLimit(userIdentifier);
+    if (!rateLimitResult.allowed) {
+      return new Response(
+        JSON.stringify({ 
+          error: `Rate limit exceeded. Please wait ${rateLimitResult.resetIn} seconds before trying again.`,
+          retryAfter: rateLimitResult.resetIn
+        }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            "Content-Type": "application/json",
+            "Retry-After": String(rateLimitResult.resetIn)
+          } 
+        }
+      );
+    }
+
     const { image, answerKey, gridConfig, detectRollNumber, detectSubjectCode } = await req.json();
     
     // Input validation
@@ -58,8 +102,6 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    console.log("Validating if image is an answer sheet and checking quality...");
-    
     // Step 1: Validate if the image is an answer sheet with quality assessment
     const validationPrompt = `You are an image classification and quality assessment expert. Analyze this image and provide:
 1. Is it an answer sheet?
@@ -119,13 +161,12 @@ Respond with ONLY a JSON object in this exact format:
 
     if (!validationResponse.ok) {
       const errorText = await validationResponse.text();
-      console.error("Validation error:", validationResponse.status, errorText);
+      console.error("Validation API error:", validationResponse.status);
       throw new Error("Failed to validate image");
     }
 
     const validationData = await validationResponse.json();
     const validationResult = validationData.choices[0].message.content;
-    console.log("Validation result:", validationResult);
 
     // Parse validation response
     let isAnswerSheet = false;
@@ -143,11 +184,10 @@ Respond with ONLY a JSON object in this exact format:
         validationReason = parsed.reason;
       }
     } catch (parseError) {
-      console.error("Failed to parse validation response:", parseError);
+      console.error("Failed to parse validation response");
     }
 
     if (!isAnswerSheet) {
-      console.log("Image is not an answer sheet:", validationReason);
       return new Response(
         JSON.stringify({ 
           error: "Invalid input: The uploaded image does not appear to be an answer sheet. Please upload a valid answer sheet with grid boxes or bubbles for answers.",
@@ -160,16 +200,9 @@ Respond with ONLY a JSON object in this exact format:
       );
     }
 
-    console.log("Image validated as answer sheet. Quality:", imageQuality);
-    console.log("Quality issues:", qualityIssues);
-    console.log("Grid configuration:", gridConfig);
-    console.log("Detect roll number:", detectRollNumber);
-    
     // Step 2: Extract roll number if requested
     let rollNumber = null;
     if (detectRollNumber) {
-      console.log("Extracting roll number from answer sheet...");
-      
       const rollNumberPrompt = `You are an OCR expert specialized in reading alphanumeric codes from structured forms.
 
 TASK: Extract the roll number from this answer sheet.
@@ -237,34 +270,25 @@ Extract the roll number now with maximum precision.`;
         if (rollResponse.ok) {
           const rollData = await rollResponse.json();
           const rollResult = rollData.choices[0].message.content;
-          console.log("Roll number extraction result:", rollResult);
           
           try {
             const jsonMatch = rollResult.match(/\{[\s\S]*?\}/);
             if (jsonMatch) {
               const parsed = JSON.parse(jsonMatch[0]);
               rollNumber = parsed.rollNumber || null;
-              console.log("Extracted roll number:", rollNumber, "Confidence:", parsed.confidence);
-              if (parsed.note) {
-                console.log("Roll number note:", parsed.note);
-              }
             }
           } catch (parseError) {
-            console.error("Failed to parse roll number response:", parseError);
+            // Silently handle parse errors
           }
-        } else {
-          console.error("Roll number extraction failed:", rollResponse.status);
         }
       } catch (rollError) {
-        console.error("Error extracting roll number:", rollError);
+        // Continue without roll number
       }
     }
     
     // Step 3: Extract subject code if requested
     let subjectCode = null;
     if (detectSubjectCode) {
-      console.log("Extracting subject code from answer sheet...");
-      
       const subjectCodePrompt = `You are an OCR expert specialized in reading alphanumeric codes from structured forms and answer sheets.
 
 TASK: Extract the subject code/paper code from this answer sheet.
@@ -350,32 +374,24 @@ Extract the subject code now by carefully examining the ENTIRE answer sheet.`;
         if (subjectResponse.ok) {
           const subjectData = await subjectResponse.json();
           const subjectResult = subjectData.choices[0].message.content;
-          console.log("Subject code extraction result:", subjectResult);
           
           try {
             const jsonMatch = subjectResult.match(/\{[\s\S]*?\}/);
             if (jsonMatch) {
               const parsed = JSON.parse(jsonMatch[0]);
               subjectCode = parsed.subjectCode || null;
-              console.log("Extracted subject code:", subjectCode, "Confidence:", parsed.confidence);
-              if (parsed.note) {
-                console.log("Subject code note:", parsed.note);
-              }
             }
           } catch (parseError) {
-            console.error("Failed to parse subject code response:", parseError);
+            // Silently handle parse errors
           }
-        } else {
-          console.error("Subject code extraction failed:", subjectResponse.status);
         }
       } catch (subjectError) {
-        console.error("Error extracting subject code:", subjectError);
+        // Continue without subject code
       }
     }
     
     // Check for required credentials only if detection was enabled
     if (detectRollNumber && !rollNumber) {
-      console.log("Roll number detection was enabled but no roll number was found");
       return new Response(
         JSON.stringify({ 
           error: "Roll number could not be detected from the answer sheet. Please ensure the roll number is clearly filled in all 10 boxes.",
@@ -389,7 +405,6 @@ Extract the subject code now by carefully examining the ENTIRE answer sheet.`;
     }
     
     if (detectSubjectCode && !subjectCode) {
-      console.log("Subject code detection was enabled but no subject code was found");
       return new Response(
         JSON.stringify({ 
           error: "Subject code could not be detected from the answer sheet. Please ensure the subject code is clearly filled.",
@@ -401,11 +416,8 @@ Extract the subject code now by carefully examining the ENTIRE answer sheet.`;
         }
       );
     }
-    
-    console.log("Analyzing answers...");
-    console.log("Answer key length:", answerKey.length);
 
-    // Step 3: Enhanced prompt for grid-based answer sheet detection
+    // Step 4: Enhanced prompt for grid-based answer sheet detection
     const gridInfo = gridConfig 
       ? `Grid Layout: ${gridConfig.rows} rows × ${gridConfig.columns} columns`
       : "Sequential layout";
@@ -510,7 +522,7 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      console.error("AI gateway error:", response.status);
       
       if (response.status === 429) {
         return new Response(
@@ -526,13 +538,11 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
         );
       }
       
-      throw new Error(`AI gateway error: ${response.status} ${errorText}`);
+      throw new Error(`AI gateway error: ${response.status}`);
     }
 
     const data = await response.json();
     const aiResponse = data.choices[0].message.content;
-    
-    console.log("AI Response:", aiResponse);
 
     // Extract structured JSON from the response
     let extractedAnswers: string[] = [];
@@ -547,14 +557,11 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
         extractedAnswers = parsed.answers || [];
         confidenceLevels = parsed.confidence || [];
         analysisNotes = parsed.notes || [];
-        
-        console.log("Parsed response:", { extractedAnswers, confidenceLevels, analysisNotes });
       } else {
         throw new Error("No JSON object found in response");
       }
     } catch (parseError) {
-      console.error("Failed to parse AI response:", parseError);
-      console.error("Raw AI response:", aiResponse);
+      console.error("Failed to parse AI response");
       
       // Fallback: try to extract just the answers array
       try {
@@ -576,7 +583,6 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
 
     // Ensure extracted answers match the expected length
     if (extractedAnswers.length !== answerKey.length) {
-      console.warn(`Expected ${answerKey.length} answers but got ${extractedAnswers.length}`);
       // Pad or trim to match
       while (extractedAnswers.length < answerKey.length) {
         extractedAnswers.push("?");
@@ -633,38 +639,6 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
     const avgConfidence = lowConfidenceCount === 0 ? "high" : 
                          lowConfidenceCount < totalQuestions / 2 ? "medium" : "low";
 
-    // Log comprehensive error analysis for model improvement
-    console.log("=== ERROR ANALYSIS LOG ===");
-    console.log("Overall Confidence:", avgConfidence);
-    console.log("Low Confidence Count:", lowConfidenceCount);
-    console.log("Quality Issues:", qualityIssues);
-    console.log("Image Quality:", imageQuality);
-    
-    if (lowConfidenceCount > 0) {
-      const lowConfAnswers = detailedResults.filter(r => r.confidence === "low");
-      console.log("Low Confidence Answers:", lowConfAnswers.map(a => ({
-        question: a.question,
-        extracted: a.extracted,
-        note: a.note
-      })));
-    }
-    
-    const incorrectAnswers = detailedResults.filter(r => !r.isCorrect);
-    if (incorrectAnswers.length > 0) {
-      console.log("Incorrect Answers Analysis:", incorrectAnswers.map(a => ({
-        question: a.question,
-        extracted: a.extracted,
-        correct: a.correct,
-        confidence: a.confidence,
-        note: a.note
-      })));
-    }
-    console.log("=== END ERROR ANALYSIS ===");
-
-    console.log(`Evaluation complete: ${correctCount}/${attemptedQuestions} correct (${unattemptedCount} unattempted), avg confidence: ${avgConfidence}`);
-    console.log("Roll Number:", rollNumber || "Not detected");
-
-    // Return results (NO IMAGE DATA STORED - only extracted text and metadata)
     return new Response(
       JSON.stringify({
         extractedAnswers,
@@ -696,7 +670,7 @@ Analyze the grid-based answer sheet now with maximum precision and systematic gr
       }
     );
   } catch (error) {
-    console.error("Error in analyze-answer-sheet:", error);
+    console.error("Error in analyze-answer-sheet:", error instanceof Error ? error.message : "Unknown error");
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : "Unknown error occurred" 

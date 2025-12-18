@@ -27,18 +27,6 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
       [questionNum]: isCorrect ? 'correct' : 'incorrect'
     }));
     
-    // Log feedback for model improvement
-    console.log("=== USER FEEDBACK ===");
-    console.log({
-      question: questionNum,
-      userSaysCorrect: isCorrect,
-      extractedAnswer: detailedResults?.[questionNum - 1]?.extracted || extractedAnswers[questionNum - 1],
-      correctAnswer: correctAnswers[questionNum - 1],
-      confidence: detailedResults?.[questionNum - 1]?.confidence,
-      timestamp: new Date().toISOString()
-    });
-    console.log("=== END FEEDBACK ===");
-    
     toast({
       title: "Feedback recorded",
       description: `Thank you! Your feedback helps improve accuracy. ${!isCorrect ? "We'll learn from this error." : ""}`,
@@ -68,7 +56,6 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
         description: `Evaluation report ${rollNumber ? `for ${rollNumber} ` : ""}exported with custom formatting`,
       });
     } catch (error) {
-      console.error("Export error:", error);
       toast({
         title: "Export failed",
         description: "Failed to export evaluation report",
@@ -235,7 +222,6 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
         description: `Exported ${evaluations.length} evaluations with Summary, Detailed Results, Answer Keys, and ${new Set(evaluations.map(e => e.subject_code || 'N/A')).size} Subject sheets`,
       });
     } catch (error) {
-      console.error("Export error:", error);
       toast({
         title: "Export failed",
         description: error instanceof Error ? error.message : "Failed to export results",
