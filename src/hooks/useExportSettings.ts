@@ -50,7 +50,6 @@ export const useExportSettings = () => {
         });
       }
     } catch (error) {
-      console.error('Error fetching export settings:', error);
       toast({
         title: 'Error loading settings',
         description: 'Using default export settings',
@@ -92,7 +91,6 @@ export const useExportSettings = () => {
         description: 'Export template updated successfully',
       });
     } catch (error) {
-      console.error('Error saving export settings:', error);
       toast({
         title: 'Error saving settings',
         description: error instanceof Error ? error.message : 'Failed to save settings',
@@ -141,7 +139,6 @@ export const useExportSettings = () => {
 
       return publicUrl;
     } catch (error) {
-      console.error('Error uploading logo:', error);
       toast({
         title: 'Error uploading logo',
         description: error instanceof Error ? error.message : 'Failed to upload logo',

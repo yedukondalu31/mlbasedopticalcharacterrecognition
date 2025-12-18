@@ -229,12 +229,46 @@ const Index = () => {
         metadata: result.metadata,
       };
       
-      // Save evaluation to database
+      // Upload image to storage bucket instead of storing base64 in database
+      let imageStorageUrl = '';
+      try {
+        const base64Data = uploadedImage!.split(',')[1];
+        const binaryData = atob(base64Data);
+        const bytes = new Uint8Array(binaryData.length);
+        for (let i = 0; i < binaryData.length; i++) {
+          bytes[i] = binaryData.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'image/jpeg' });
+        
+        const fileName = `${session.user.id}/${Date.now()}.jpg`;
+        const { error: uploadError } = await supabase.storage
+          .from('answer-sheets')
+          .upload(fileName, blob, {
+            contentType: 'image/jpeg',
+            upsert: false,
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        // Get signed URL for private bucket
+        const { data: signedUrlData } = await supabase.storage
+          .from('answer-sheets')
+          .createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year expiry
+        
+        imageStorageUrl = signedUrlData?.signedUrl || fileName;
+      } catch (storageError) {
+        // Fallback: store a placeholder if storage fails
+        imageStorageUrl = 'storage-upload-failed';
+      }
+
+      // Save evaluation to database with storage URL
       const { error: dbError } = await supabase
         .from('evaluations')
         .insert({
           user_id: session.user.id,
-          image_url: uploadedImage!,
+          image_url: imageStorageUrl,
           answer_key: correctAnswers,
           extracted_answers: result.extractedAnswers,
           correct_answers: result.correctAnswers,
@@ -251,7 +285,6 @@ const Index = () => {
         });
       
       if (dbError) {
-        console.error("Error saving to database:", dbError);
         toast({
           title: "Warning",
           description: "Evaluation completed but couldn't save to database",
@@ -270,7 +303,6 @@ const Index = () => {
         description: `Score: ${result.score}/${result.totalQuestions} (${result.accuracy}%)${rollInfo} - ${confidenceText}`,
       });
     } catch (error) {
-      console.error("Error processing answer sheet:", error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to process answer sheet",
@@ -338,12 +370,43 @@ const Index = () => {
 
         const result = await response.json();
         
-        // Save to database
+        // Upload image to storage bucket
+        let imageStorageUrl = '';
+        try {
+          const base64Data = batchImages[i].dataUrl.split(',')[1];
+          const binaryData = atob(base64Data);
+          const bytes = new Uint8Array(binaryData.length);
+          for (let j = 0; j < binaryData.length; j++) {
+            bytes[j] = binaryData.charCodeAt(j);
+          }
+          const blob = new Blob([bytes], { type: 'image/jpeg' });
+          
+          const fileName = `${session.user.id}/${Date.now()}-${i}.jpg`;
+          const { error: uploadError } = await supabase.storage
+            .from('answer-sheets')
+            .upload(fileName, blob, {
+              contentType: 'image/jpeg',
+              upsert: false,
+            });
+
+          if (!uploadError) {
+            const { data: signedUrlData } = await supabase.storage
+              .from('answer-sheets')
+              .createSignedUrl(fileName, 60 * 60 * 24 * 365);
+            imageStorageUrl = signedUrlData?.signedUrl || fileName;
+          } else {
+            imageStorageUrl = 'storage-upload-failed';
+          }
+        } catch {
+          imageStorageUrl = 'storage-upload-failed';
+        }
+
+        // Save to database with storage URL
         const { error: dbError } = await supabase
           .from('evaluations')
           .insert({
             user_id: session.user.id,
-            image_url: batchImages[i].dataUrl,
+            image_url: imageStorageUrl,
             answer_key: correctAnswers,
             extracted_answers: result.extractedAnswers,
             correct_answers: result.correctAnswers,
@@ -358,10 +421,6 @@ const Index = () => {
             low_confidence_count: result.lowConfidenceCount,
             detailed_results: result.detailedResults,
           });
-        
-        if (dbError) {
-          console.error("Error saving to database:", dbError);
-        }
 
         // Update status to completed
         setBatchProcessing(prev => prev.map((item, idx) => 
@@ -380,7 +439,7 @@ const Index = () => {
         processedInThisRun++;
 
       } catch (error) {
-        console.error(`Error processing ${batchImages[i].file.name}:`, error);
+        // Error processing batch item
         
         // Update status to error
         setBatchProcessing(prev => prev.map((item, idx) => 

@@ -184,7 +184,6 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
           // 7. Pass to parent component
           onImageUpload(processedDataUrl);
         } catch (error) {
-          console.error("Error processing image:", error);
           toast({
             title: "Processing failed",
             description: "Failed to process the image. Please try another image.",
@@ -203,7 +202,6 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
       
       reader.readAsDataURL(file);
     } catch (error) {
-      console.error("Error handling file:", error);
       toast({
         title: "Upload error",
         description: "An unexpected error occurred. Please try again.",
@@ -281,7 +279,7 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
 
           processedImages.push({ file, dataUrl });
         } catch (error) {
-          console.error(`Error processing ${file.name}:`, error);
+          // Skip files that fail processing
         }
       }
 
@@ -329,12 +327,9 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
         });
       }
     } catch (error) {
-      console.error("Camera error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      
       toast({
         title: "Camera Access Denied",
-        description: `Please allow camera access in your browser settings. Error: ${errorMessage}`,
+        description: "Please allow camera access in your browser settings.",
         variant: "destructive",
       });
     }
@@ -344,7 +339,6 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
         track.stop();
-        console.log("Camera track stopped:", track.label);
       });
       streamRef.current = null;
     }
@@ -387,7 +381,6 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
           onImageUpload(processedDataUrl);
           stopCamera();
         } catch (error) {
-          console.error("Error processing captured photo:", error);
           toast({
             title: "Processing failed",
             description: "Failed to process the captured photo. Please try again.",
