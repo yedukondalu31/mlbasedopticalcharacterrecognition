@@ -6,6 +6,7 @@ import { toast } from "@/hooks/use-toast";
 import { formatBatchExport } from '@/lib/excelFormatter';
 import { useExportSettings } from '@/hooks/useExportSettings';
 import { Badge } from "@/components/ui/badge";
+import BatchSummary from "@/components/BatchSummary";
 
 export interface BatchProcessingItem {
   fileName: string;
@@ -222,6 +223,11 @@ const BatchProcessor = ({
             </div>
           ))}
         </div>
+
+        {/* Completion Summary */}
+        {isComplete && completedCount > 0 && (
+          <BatchSummary items={items} />
+        )}
       </div>
     </Card>
   );
