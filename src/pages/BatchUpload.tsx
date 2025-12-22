@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Session } from "@supabase/supabase-js";
 import ImageUpload from "@/components/ImageUpload";
 import AnswerKeyForm from "@/components/AnswerKeyForm";
 import BatchProcessor, { BatchProcessingItem } from "@/components/BatchProcessor";
+import StepIndicator from "@/components/StepIndicator";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +55,22 @@ const BatchUpload = () => {
       navigate('/');
     }
   }, [expectedCount, navigate]);
+
+  // Calculate current step
+  const currentStep = useMemo(() => {
+    const completedCount = batchProcessing.filter(item => item.status === 'completed').length;
+    if (completedCount > 0 || isProcessing) return 4;
+    if (answerKey.length > 0) return 4;
+    if (batchImages.length > 0) return 3;
+    return 2;
+  }, [batchImages.length, answerKey.length, batchProcessing, isProcessing]);
+
+  const steps = [
+    { number: 1, label: "Enter Count" },
+    { number: 2, label: "Upload Sheets" },
+    { number: 3, label: "Answer Key" },
+    { number: 4, label: "Process" },
+  ];
 
   if (!session || !expectedCount) return null;
 
@@ -294,6 +311,10 @@ const BatchUpload = () => {
       </div>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Step Indicator */}
+        <Card className="p-4">
+          <StepIndicator steps={steps} currentStep={currentStep} />
+        </Card>
         {/* Progress Card */}
         <Card className="p-6 bg-gradient-to-r from-primary/5 to-primary/10 border-2 border-primary/20">
           <div className="flex items-center justify-center gap-4">
