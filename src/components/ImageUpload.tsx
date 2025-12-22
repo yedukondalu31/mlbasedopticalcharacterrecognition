@@ -230,12 +230,12 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Batch upload mode
-    if (isBatchMode && files.length > 1 && onBatchUpload) {
+    // Batch upload mode - always use batch handler for batch mode, regardless of file count
+    if (isBatchMode && onBatchUpload) {
       const processedImages: { file: File; dataUrl: string }[] = [];
       
       toast({
-        title: `Processing ${files.length} images...`,
+        title: `Processing ${files.length} image${files.length > 1 ? 's' : ''}...`,
         description: "Please wait while we prepare your images",
       });
 
@@ -284,11 +284,12 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
       }
 
       if (processedImages.length > 0) {
+        // Always append in batch mode after first upload
         onBatchUpload(processedImages, appendMode);
-        toast({
-          title: appendMode ? `Added ${processedImages.length} more images` : `${processedImages.length} images ready`,
-          description: appendMode ? "Click 'Process New Sheets' to continue" : "Now submit the answer key to process all sheets",
-        });
+        // Reset append mode change to allow continuous uploads
+        if (onAppendModeChange) {
+          onAppendModeChange(true);
+        }
       } else {
         toast({
           title: "No valid images",
@@ -296,10 +297,14 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
           variant: "destructive",
         });
       }
+      
+      // Reset file input to allow re-selecting the same files
+      e.target.value = '';
     } else {
       // Single upload mode
       const file = files[0];
       if (file) handleFile(file);
+      e.target.value = '';
     }
   };
 
