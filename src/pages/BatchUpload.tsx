@@ -75,7 +75,8 @@ const BatchUpload = () => {
   if (!session || !expectedCount) return null;
 
   const handleBatchUpload = (images: { file: File; dataUrl: string }[], append: boolean = false) => {
-    if (append && batchImages.length > 0) {
+    if ((append || batchImages.length > 0) && batchImages.length > 0) {
+      // Always append after first upload
       setBatchImages(prev => [...prev, ...images]);
       setBatchProcessing(prev => [
         ...prev,
@@ -89,16 +90,19 @@ const BatchUpload = () => {
         description: `Total: ${batchImages.length + images.length} answer sheets in this batch`,
       });
     } else {
+      // First upload
       setBatchImages(images);
       setBatchProcessing(images.map(img => ({
         fileName: img.file.name,
         status: 'pending' as const,
       })));
       toast({
-        title: `${images.length} images ready`,
-        description: "Now submit the answer key to process all sheets",
+        title: `${images.length} image${images.length !== 1 ? 's' : ''} ready`,
+        description: "Upload more or submit the answer key to process",
       });
     }
+    // Enable append mode after first upload for continuous uploading
+    setIsAppendMode(true);
   };
 
   const handleAnswerKeySubmit = (answers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean, detectSubjectCode?: boolean) => {
