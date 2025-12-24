@@ -5,6 +5,7 @@ import ImageUpload from "@/components/ImageUpload";
 import AnswerKeyForm from "@/components/AnswerKeyForm";
 import BatchProcessor, { BatchProcessingItem } from "@/components/BatchProcessor";
 import StepIndicator from "@/components/StepIndicator";
+import QuickApplyKey from "@/components/QuickApplyKey";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -355,6 +356,15 @@ const BatchUpload = () => {
           appendMode={isAppendMode}
           onAppendModeChange={setIsAppendMode}
         />
+
+        {/* Quick Apply Saved Key */}
+        {batchImages.length > 0 && answerKey.length === 0 && !isProcessing && (
+          <QuickApplyKey
+            onApplyKey={handleAnswerKeySubmit}
+            disabled={isProcessing}
+            sheetsCount={batchImages.length}
+          />
+        )}
 
         {/* Answer Key Form */}
         {batchImages.length > 0 && (
