@@ -119,6 +119,45 @@ export type Database = {
         }
         Relationships: []
       }
+      saved_answer_keys: {
+        Row: {
+          answers: string[]
+          created_at: string
+          detect_roll_number: boolean | null
+          detect_subject_code: boolean | null
+          grid_columns: number | null
+          grid_rows: number | null
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          answers: string[]
+          created_at?: string
+          detect_roll_number?: boolean | null
+          detect_subject_code?: boolean | null
+          grid_columns?: number | null
+          grid_rows?: number | null
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          answers?: string[]
+          created_at?: string
+          detect_roll_number?: boolean | null
+          detect_subject_code?: boolean | null
+          grid_columns?: number | null
+          grid_rows?: number | null
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
