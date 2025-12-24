@@ -1,25 +1,59 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Key, Play, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import SavedAnswerKeySelector from "./SavedAnswerKeySelector";
 
 interface AnswerKeyFormProps {
   onSubmit: (answers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean, detectSubjectCode?: boolean) => void;
   disabled: boolean;
   isProcessing: boolean;
+  initialAnswers?: string[];
+  initialGridConfig?: { rows: number; columns: number };
+  initialDetectRollNumber?: boolean;
+  initialDetectSubjectCode?: boolean;
 }
 
-const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps) => {
-  const [gridMode, setGridMode] = useState(false);
-  const [detectRollNumber, setDetectRollNumber] = useState(true);
-  const [detectSubjectCode, setDetectSubjectCode] = useState(true);
-  const [rows, setRows] = useState(5);
-  const [columns, setColumns] = useState(4);
-  const [numQuestions, setNumQuestions] = useState(10);
-  const [answers, setAnswers] = useState<string[]>(Array(10).fill(''));
+const AnswerKeyForm = ({ 
+  onSubmit, 
+  disabled, 
+  isProcessing,
+  initialAnswers,
+  initialGridConfig,
+  initialDetectRollNumber,
+  initialDetectSubjectCode,
+}: AnswerKeyFormProps) => {
+  const [gridMode, setGridMode] = useState(!!initialGridConfig);
+  const [detectRollNumber, setDetectRollNumber] = useState(initialDetectRollNumber ?? true);
+  const [detectSubjectCode, setDetectSubjectCode] = useState(initialDetectSubjectCode ?? true);
+  const [rows, setRows] = useState(initialGridConfig?.rows ?? 5);
+  const [columns, setColumns] = useState(initialGridConfig?.columns ?? 4);
+  const [numQuestions, setNumQuestions] = useState(initialAnswers?.length ?? 10);
+  const [answers, setAnswers] = useState<string[]>(initialAnswers ?? Array(10).fill(''));
+
+  // Load saved key handler
+  const handleLoadKey = (
+    loadedAnswers: string[],
+    gridConfig?: { rows: number; columns: number },
+    loadedDetectRollNumber?: boolean,
+    loadedDetectSubjectCode?: boolean
+  ) => {
+    setAnswers(loadedAnswers);
+    setNumQuestions(loadedAnswers.length);
+    setDetectRollNumber(loadedDetectRollNumber ?? true);
+    setDetectSubjectCode(loadedDetectSubjectCode ?? true);
+    
+    if (gridConfig) {
+      setGridMode(true);
+      setRows(gridConfig.rows);
+      setColumns(gridConfig.columns);
+    } else {
+      setGridMode(false);
+    }
+  };
 
   const handleNumQuestionsChange = (value: string) => {
     const num = parseInt(value) || 0;
@@ -86,11 +120,21 @@ const AnswerKeyForm = ({ onSubmit, disabled, isProcessing }: AnswerKeyFormProps)
 
   return (
     <section className="w-full">
-      <div className="mb-4 md:mb-6">
-        <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-1 md:mb-2">Set Answer Key</h2>
-        <p className="text-sm md:text-base text-muted-foreground">
-          Configure the correct answers
-        </p>
+      <div className="mb-4 md:mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-1 md:mb-2">Set Answer Key</h2>
+          <p className="text-sm md:text-base text-muted-foreground">
+            Configure the correct answers or load a saved key
+          </p>
+        </div>
+        <SavedAnswerKeySelector
+          currentAnswers={answers}
+          currentGridConfig={gridMode ? { rows, columns } : undefined}
+          detectRollNumber={detectRollNumber}
+          detectSubjectCode={detectSubjectCode}
+          onLoadKey={handleLoadKey}
+          disabled={disabled || isProcessing}
+        />
       </div>
 
       <Card className="p-4 md:p-6 bg-gradient-card border-2 transition-all hover:shadow-lg">
