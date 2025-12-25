@@ -8,6 +8,7 @@ import ResultsDashboard from "@/components/ResultsDashboard";
 import PrivacyNotice from "@/components/PrivacyNotice";
 import BatchProcessor, { BatchProcessingItem } from "@/components/BatchProcessor";
 import ExportSettings from "@/components/ExportSettings";
+import QuickApplyKey from "@/components/QuickApplyKey";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -625,6 +626,15 @@ const Index = () => {
                 onAppendModeChange={setIsAppendMode}
               />
             </div>
+
+            {/* Quick Apply Saved Key - show when image uploaded but no answer key yet */}
+            {uploadedImage && answerKey.length === 0 && !isProcessing && (
+              <QuickApplyKey
+                onApplyKey={handleAnswerKeySubmit}
+                disabled={isProcessing}
+                sheetsCount={1}
+              />
+            )}
             
             <AnswerKeyForm 
               onSubmit={handleAnswerKeySubmit}
