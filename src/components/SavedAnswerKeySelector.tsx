@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -20,9 +21,10 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Save, FolderOpen, Trash2, ChevronDown, Key, Loader2, Pencil } from "lucide-react";
+import { Save, FolderOpen, Trash2, ChevronDown, Key, Loader2, Pencil, Search, Calendar, Hash, Copy, Grid3X3 } from "lucide-react";
 import { SavedAnswerKey, useSavedAnswerKeys } from "@/hooks/useSavedAnswerKeys";
 import { toast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 
 interface SavedAnswerKeySelectorProps {
   currentAnswers: string[];
@@ -56,6 +58,7 @@ const SavedAnswerKeySelector = ({
   const [editAnswers, setEditAnswers] = useState<string[]>([]);
   const [editDetectRollNumber, setEditDetectRollNumber] = useState(true);
   const [editDetectSubjectCode, setEditDetectSubjectCode] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleSave = async () => {
     if (!keyName.trim()) {
@@ -122,6 +125,21 @@ const SavedAnswerKeySelector = ({
     setEditDialogOpen(true);
   };
 
+  const handleDuplicate = async (e: React.MouseEvent, key: SavedAnswerKey) => {
+    e.stopPropagation();
+    const gridConfig = key.grid_rows && key.grid_columns 
+      ? { rows: key.grid_rows, columns: key.grid_columns }
+      : undefined;
+    
+    await saveAnswerKey(
+      `${key.name} (Copy)`,
+      key.answers,
+      gridConfig,
+      key.detect_roll_number ?? true,
+      key.detect_subject_code ?? true
+    );
+  };
+
   const handleEditAnswerChange = (index: number, value: string) => {
     const upperValue = value.toUpperCase();
     if (upperValue === '' || /^[A-E]$/.test(upperValue)) {
@@ -159,6 +177,11 @@ const SavedAnswerKeySelector = ({
 
   const filledCount = currentAnswers.filter(a => a !== '').length;
 
+  const filteredKeys = savedKeys.filter(key =>
+    key.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    key.answers.length.toString().includes(searchQuery)
+  );
+
   return (
     <div className="flex items-center gap-2">
       {/* Load Saved Key */}
@@ -172,60 +195,121 @@ const SavedAnswerKeySelector = ({
           >
             <FolderOpen className="h-4 w-4" />
             Load Key
+            {savedKeys.length > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                {savedKeys.length}
+              </Badge>
+            )}
             <ChevronDown className="h-3 w-3" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
-          {loading ? (
-            <div className="p-4 text-center text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
-              Loading saved keys...
-            </div>
-          ) : savedKeys.length === 0 ? (
-            <div className="p-4 text-center text-muted-foreground text-sm">
-              <Key className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              No saved answer keys
-            </div>
-          ) : (
-            savedKeys.map((key) => (
-              <DropdownMenuItem
-                key={key.id}
-                className="flex items-center justify-between cursor-pointer py-2"
-                onClick={() => handleLoadKey(key)}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{key.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {key.answers.length} questions
-                    {key.grid_rows && key.grid_columns && ` • ${key.grid_rows}×${key.grid_columns}`}
-                  </p>
+        <DropdownMenuContent align="start" className="w-80">
+          {/* Search Input */}
+          {savedKeys.length > 3 && (
+            <>
+              <div className="p-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name or question count..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8 h-9"
+                    onClick={(e) => e.stopPropagation()}
+                  />
                 </div>
-                <div className="flex items-center gap-1 ml-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-muted-foreground hover:text-primary"
-                    onClick={(e) => handleEditClick(e, key)}
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-destructive hover:text-destructive"
-                    onClick={(e) => handleDelete(e, key)}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              </DropdownMenuItem>
-            ))
+              </div>
+              <DropdownMenuSeparator />
+            </>
           )}
+          
+          <div className="max-h-72 overflow-y-auto">
+            {loading ? (
+              <div className="p-4 text-center text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+                Loading saved keys...
+              </div>
+            ) : filteredKeys.length === 0 ? (
+              <div className="p-4 text-center text-muted-foreground text-sm">
+                <Key className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                {searchQuery ? "No matching keys found" : "No saved answer keys"}
+              </div>
+            ) : (
+              filteredKeys.map((key) => (
+                <DropdownMenuItem
+                  key={key.id}
+                  className="flex flex-col items-start cursor-pointer py-3 px-3"
+                  onClick={() => handleLoadKey(key)}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{key.name}</p>
+                    </div>
+                    <div className="flex items-center gap-0.5 ml-2 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-primary"
+                        onClick={(e) => handleDuplicate(e, key)}
+                        title="Duplicate"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-primary"
+                        onClick={(e) => handleEditClick(e, key)}
+                        title="Edit"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-destructive hover:text-destructive"
+                        onClick={(e) => handleDelete(e, key)}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5 w-full">
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      <Hash className="h-3 w-3" />
+                      {key.answers.length} Q
+                    </span>
+                    {key.grid_rows && key.grid_columns && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                        <Grid3X3 className="h-3 w-3" />
+                        {key.grid_rows}×{key.grid_columns}
+                      </span>
+                    )}
+                    {key.detect_roll_number && (
+                      <Badge variant="outline" className="text-xs h-5 px-1.5">Roll</Badge>
+                    )}
+                    {key.detect_subject_code && (
+                      <Badge variant="outline" className="text-xs h-5 px-1.5">Subject</Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground/70 mt-1 flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    {format(new Date(key.updated_at), 'MMM d, yyyy')}
+                  </div>
+                </DropdownMenuItem>
+              ))
+            )}
+          </div>
+          
           {savedKeys.length > 0 && (
             <>
               <DropdownMenuSeparator />
-              <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                {savedKeys.length} saved key{savedKeys.length !== 1 ? 's' : ''}
+              <div className="px-3 py-2 text-xs text-muted-foreground flex justify-between">
+                <span>{savedKeys.length} saved key{savedKeys.length !== 1 ? 's' : ''}</span>
+                {searchQuery && filteredKeys.length !== savedKeys.length && (
+                  <span>{filteredKeys.length} shown</span>
+                )}
               </div>
             </>
           )}
