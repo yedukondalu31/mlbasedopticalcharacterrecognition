@@ -21,8 +21,14 @@ export const useSavedAnswerKeys = () => {
   const fetchSavedKeys = async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+
+      // If auth session isn't ready yet, don't treat as an error — just show empty list.
+      if (!user) {
+        setSavedKeys([]);
+        return;
+      }
 
       const { data, error } = await supabase
         .from('saved_answer_keys' as any)
@@ -34,6 +40,11 @@ export const useSavedAnswerKeys = () => {
       setSavedKeys((data as unknown as SavedAnswerKey[]) || []);
     } catch (error) {
       console.error('Error fetching saved keys:', error);
+      toast({
+        title: "Couldn't load saved keys",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -147,6 +158,13 @@ export const useSavedAnswerKeys = () => {
 
   useEffect(() => {
     fetchSavedKeys();
+
+    // Refresh keys when auth state changes (initial session load, login/logout).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      fetchSavedKeys();
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   return {
