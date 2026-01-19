@@ -404,18 +404,8 @@ Extract the subject code now by carefully examining the ENTIRE answer sheet.`;
       );
     }
     
-    if (detectSubjectCode && !subjectCode) {
-      return new Response(
-        JSON.stringify({ 
-          error: "Subject code could not be detected from the answer sheet. Please ensure the subject code is clearly filled.",
-          validationReason: "Subject code detection enabled but not found"
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      );
-    }
+    // Note: Subject code is optional - don't error if not found, just continue with null
+    // This allows processing to continue even if no subject code exists on the answer sheet
 
     // Step 4: Enhanced prompt for grid-based answer sheet detection
     const gridInfo = gridConfig 
