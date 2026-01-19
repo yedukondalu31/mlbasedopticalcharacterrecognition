@@ -219,6 +219,7 @@ const Index = () => {
         extractedAnswers: result.extractedAnswers,
         correctAnswers: result.correctAnswers,
         rollNumber: result.rollNumber,
+        subjectCode: result.subjectCode,
         gridConfig: result.gridConfig,
         score: result.score,
         totalQuestions: result.totalQuestions,
@@ -297,12 +298,13 @@ const Index = () => {
       setEvaluationResult(evaluationResult);
       
       const rollInfo = result.rollNumber ? ` | Roll: ${result.rollNumber}` : "";
+      const subjectInfo = result.subjectCode ? ` | Subject: ${result.subjectCode}` : "";
       const confidenceText = result.confidence === "high" ? "High confidence" : 
                             result.confidence === "medium" ? "Medium confidence" : "Low confidence";
       
       toast({
         title: "Evaluation complete!",
-        description: `Score: ${result.score}/${result.totalQuestions} (${result.accuracy}%)${rollInfo} - ${confidenceText}`,
+        description: `Score: ${result.score}/${result.totalQuestions} (${result.accuracy}%)${rollInfo}${subjectInfo} - ${confidenceText}`,
       });
     } catch (error) {
       toast({

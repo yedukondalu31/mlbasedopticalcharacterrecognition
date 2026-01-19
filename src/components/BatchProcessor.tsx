@@ -1,12 +1,21 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle, XCircle, Loader2, FileText, FileSpreadsheet, Plus, Play } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, FileText, FileSpreadsheet, Plus, Play, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { formatBatchExport } from '@/lib/excelFormatter';
 import { useExportSettings } from '@/hooks/useExportSettings';
 import { Badge } from "@/components/ui/badge";
 import BatchSummary from "@/components/BatchSummary";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export interface BatchProcessingItem {
   fileName: string;
@@ -43,6 +52,7 @@ const BatchProcessor = ({
   hasPendingSheets
 }: BatchProcessorProps) => {
   const { settings } = useExportSettings();
+  const [exporting, setExporting] = useState(false);
   const completedCount = items.filter(item => item.status === 'completed').length;
   const errorCount = items.filter(item => item.status === 'error').length;
   const isComplete = !isProcessing && currentIndex >= items.length;
@@ -52,25 +62,41 @@ const BatchProcessor = ({
   const progress = totalTarget > 0 ? (completedCount / totalTarget) * 100 : 0;
   const remainingCount = totalTarget - completedCount;
 
-  const handleExportBatch = () => {
+  // Get unique subject codes
+  const subjectCodes = [...new Set(
+    items
+      .filter(item => item.status === 'completed' && item.subjectCode)
+      .map(item => item.subjectCode!)
+  )].sort();
+
+  const handleExportBatch = (filterSubject?: string) => {
     try {
-      const completedItems = items.filter(item => item.status === 'completed');
+      setExporting(true);
+      let itemsToExport = items.filter(item => item.status === 'completed');
       
-      if (completedItems.length === 0) {
+      if (filterSubject) {
+        itemsToExport = itemsToExport.filter(item => item.subjectCode === filterSubject);
+      }
+      
+      if (itemsToExport.length === 0) {
         toast({
           title: "No completed evaluations",
-          description: "There are no successfully processed sheets to export",
+          description: filterSubject 
+            ? `No results found for subject: ${filterSubject}`
+            : "There are no successfully processed sheets to export",
           variant: "destructive",
         });
         return;
       }
 
       // Use the new formatter with custom settings
-      formatBatchExport(settings, items, answerKey);
+      formatBatchExport(settings, filterSubject ? itemsToExport : items, answerKey);
 
       toast({
         title: "Batch export successful! 📊",
-        description: `Exported ${completedItems.length} student results with custom formatting`,
+        description: filterSubject
+          ? `Exported ${itemsToExport.length} results for ${filterSubject}`
+          : `Exported ${itemsToExport.length} student results with custom formatting`,
       });
     } catch (error) {
       console.error("Export error:", error);
@@ -79,6 +105,8 @@ const BatchProcessor = ({
         description: error instanceof Error ? error.message : "Failed to export batch results",
         variant: "destructive",
       });
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -109,12 +137,52 @@ const BatchProcessor = ({
               </Button>
             )}
             
-            {/* Export Button */}
+            {/* Export Button with Dropdown */}
             {isComplete && completedCount > 0 && (
-              <Button onClick={handleExportBatch} variant="default" size="sm" className="gap-2">
-                <FileSpreadsheet className="h-4 w-4" />
-                Export Batch
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="default" size="sm" className="gap-2" disabled={exporting}>
+                    {exporting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileSpreadsheet className="h-4 w-4" />
+                    )}
+                    Export Batch
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={() => handleExportBatch()}>
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Export All Results
+                  </DropdownMenuItem>
+                  
+                  {subjectCodes.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                        Export by Subject
+                      </DropdownMenuLabel>
+                      {subjectCodes.map((code) => {
+                        const count = items.filter(i => i.status === 'completed' && i.subjectCode === code).length;
+                        return (
+                          <DropdownMenuItem 
+                            key={code} 
+                            onClick={() => handleExportBatch(code)}
+                          >
+                            <Badge variant="outline" className="mr-2 font-mono text-xs">
+                              {code}
+                            </Badge>
+                            <span className="text-muted-foreground text-xs">
+                              ({count} student{count !== 1 ? 's' : ''})
+                            </span>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             
             {/* Cancel Button */}

@@ -30,6 +30,7 @@ const BatchSummary = ({ items }: BatchSummaryProps) => {
       total: item.totalQuestions!,
       accuracy: item.accuracy || (item.score! / item.totalQuestions!) * 100,
       rollNumber: item.rollNumber,
+      subjectCode: item.subjectCode,
       fileName: item.fileName,
     }));
 
@@ -62,6 +63,27 @@ const BatchSummary = ({ items }: BatchSummaryProps) => {
   const passRate = scores.length > 0 
     ? (scores.filter(s => s.accuracy >= 50).length / scores.length) * 100 
     : 0;
+
+  // Subject code breakdown
+  const subjectBreakdown = scores.reduce((acc, s) => {
+    const code = s.subjectCode || 'No Subject';
+    if (!acc[code]) {
+      acc[code] = { count: 0, totalAccuracy: 0, scores: [] };
+    }
+    acc[code].count++;
+    acc[code].totalAccuracy += s.accuracy;
+    acc[code].scores.push(s.score);
+    return acc;
+  }, {} as Record<string, { count: number; totalAccuracy: number; scores: number[] }>);
+
+  const subjectStats = Object.entries(subjectBreakdown)
+    .map(([code, data]) => ({
+      code,
+      count: data.count,
+      avgAccuracy: data.totalAccuracy / data.count,
+      avgScore: data.scores.reduce((a, b) => a + b, 0) / data.scores.length,
+    }))
+    .sort((a, b) => b.count - a.count);
 
   return (
     <Card className="p-6 bg-gradient-to-br from-success/5 via-primary/5 to-accent/5 border-2 border-success/30 animate-fade-in">
@@ -140,6 +162,38 @@ const BatchSummary = ({ items }: BatchSummaryProps) => {
             )}
           </div>
         )}
+
+        {/* Subject Code Breakdown */}
+        {subjectStats.length > 1 || (subjectStats.length === 1 && subjectStats[0].code !== 'No Subject') ? (
+          <div className="space-y-3">
+            <h4 className="text-sm font-semibold text-foreground">Subject-wise Performance</h4>
+            <div className="grid gap-2">
+              {subjectStats.map((subject) => (
+                <div 
+                  key={subject.code} 
+                  className="flex items-center justify-between p-3 bg-background/80 rounded-lg border"
+                >
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono">
+                      {subject.code}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {subject.count} student{subject.count !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-foreground">
+                      {subject.avgAccuracy.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Avg: {subject.avgScore.toFixed(1)}/{totalQuestions}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {/* Grade Distribution */}
         <div className="space-y-3">
