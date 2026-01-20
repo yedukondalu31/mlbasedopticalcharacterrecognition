@@ -7,11 +7,13 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
-import { Mail, Loader2, KeyRound, Lock, ArrowLeft } from 'lucide-react';
+import { Mail, Loader2, KeyRound, Lock, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
+
+type AuthStep = 'credentials' | 'otp-verification';
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -19,9 +21,9 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [authMethod, setAuthMethod] = useState<'password' | 'otp'>('password');
+  const [authStep, setAuthStep] = useState<AuthStep>('credentials');
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [pendingSession, setPendingSession] = useState<any>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -31,13 +33,14 @@ export default function AuthPage() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
+      // Only auto-navigate if we're not in the middle of 2FA
+      if (session && authStep === 'credentials') {
         navigate('/');
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [navigate, authStep]);
 
   const validateEmail = (email: string): boolean => {
     const result = emailSchema.safeParse(email);
@@ -52,13 +55,13 @@ export default function AuthPage() {
     return true;
   };
 
-  const handleSendOtp = async () => {
-    if (!validateEmail(email)) return;
-
-    setLoading(true);
+  const sendOtpForVerification = async (userEmail: string) => {
     try {
+      // First sign out to clear the session (we'll complete login after OTP)
+      await supabase.auth.signOut();
+      
       const { error } = await supabase.auth.signInWithOtp({
-        email,
+        email: userEmail,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
         },
@@ -66,26 +69,25 @@ export default function AuthPage() {
 
       if (error) throw error;
 
-      setOtpSent(true);
+      setAuthStep('otp-verification');
       toast({
-        title: 'OTP sent!',
-        description: 'Check your email for the login code',
+        title: 'Verification Required',
+        description: 'A 6-digit code has been sent to your email for verification',
       });
     } catch (error: any) {
       toast({
-        title: 'Error sending OTP',
-        description: error.message || 'Failed to send OTP',
+        title: 'Error sending verification code',
+        description: error.message || 'Failed to send verification code',
         variant: 'destructive',
       });
-    } finally {
-      setLoading(false);
+      throw error;
     }
   };
 
   const handleVerifyOtp = async () => {
     if (!otp || otp.length !== 6) {
       toast({
-        title: 'Invalid OTP',
+        title: 'Invalid Code',
         description: 'Please enter the 6-digit code from your email',
         variant: 'destructive',
       });
@@ -103,13 +105,14 @@ export default function AuthPage() {
       if (error) throw error;
 
       toast({
-        title: 'Success!',
+        title: 'Verified!',
         description: 'You are now logged in',
       });
+      navigate('/');
     } catch (error: any) {
       toast({
         title: 'Verification failed',
-        description: error.message || 'Invalid or expired OTP',
+        description: error.message || 'Invalid or expired code',
         variant: 'destructive',
       });
     } finally {
@@ -133,7 +136,8 @@ export default function AuthPage() {
     setLoading(true);
     try {
       if (authMode === 'signup') {
-        const { error } = await supabase.auth.signUp({
+        // For signup, create account then send OTP for verification
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -143,22 +147,24 @@ export default function AuthPage() {
 
         if (error) throw error;
 
+        // Send OTP for 2FA verification
+        await sendOtpForVerification(email);
+        
         toast({
           title: 'Account created!',
-          description: 'Check your email to confirm your account',
+          description: 'Please verify with the code sent to your email',
         });
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        // For signin, verify password first
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
         if (error) throw error;
 
-        toast({
-          title: 'Welcome back!',
-          description: 'You are now logged in',
-        });
+        // Password verified, now send OTP for 2FA
+        await sendOtpForVerification(email);
       }
     } catch (error: any) {
       let message = error.message;
@@ -178,8 +184,23 @@ export default function AuthPage() {
     }
   };
 
-  const resetOtpFlow = () => {
-    setOtpSent(false);
+  const handleResendOtp = async () => {
+    setLoading(true);
+    try {
+      await sendOtpForVerification(email);
+      toast({
+        title: 'Code resent',
+        description: 'Check your email for the new verification code',
+      });
+    } catch (error) {
+      // Error already handled in sendOtpForVerification
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetToCredentials = () => {
+    setAuthStep('credentials');
     setOtp('');
   };
 
@@ -190,134 +211,78 @@ export default function AuthPage() {
           <h1 className="text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
             Grade Ace
           </h1>
-          <p className="text-muted-foreground">Sign in to start grading</p>
+          <p className="text-muted-foreground">
+            {authStep === 'otp-verification' 
+              ? 'Verify your identity' 
+              : 'Sign in to start grading'}
+          </p>
         </div>
 
         <Card className="p-6 shadow-lg border-2">
-          {/* Auth Method Toggle */}
-          <div className="flex gap-2 mb-6">
-            <Button
-              variant={authMethod === 'password' ? 'default' : 'outline'}
-              className="flex-1 gap-2"
-              onClick={() => {
-                setAuthMethod('password');
-                resetOtpFlow();
-              }}
-            >
-              <Lock className="h-4 w-4" />
-              Password
-            </Button>
-            <Button
-              variant={authMethod === 'otp' ? 'default' : 'outline'}
-              className="flex-1 gap-2"
-              onClick={() => {
-                setAuthMethod('otp');
-                setAuthMode('signin');
-              }}
-            >
-              <KeyRound className="h-4 w-4" />
-              Email OTP
-            </Button>
-          </div>
-
-          {authMethod === 'otp' ? (
-            /* OTP Login Flow */
+          {authStep === 'otp-verification' ? (
+            /* OTP Verification Step (2FA) */
             <div className="space-y-4">
-              {!otpSent ? (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="otp-email">Email Address</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="otp-email"
-                        type="email"
-                        placeholder="your@email.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10"
-                        disabled={loading}
-                      />
-                    </div>
-                  </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetToCredentials}
+                className="gap-1 -ml-2 mb-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Button>
 
-                  <Button
-                    onClick={handleSendOtp}
-                    disabled={loading || !email}
-                    className="w-full gap-2"
-                  >
-                    {loading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Mail className="h-4 w-4" />
-                    )}
-                    Send Login Code
-                  </Button>
+              <div className="text-center mb-4">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                  <ShieldCheck className="h-8 w-8 text-primary" />
+                </div>
+                <h2 className="text-lg font-semibold mb-1">Two-Factor Verification</h2>
+                <p className="text-sm text-muted-foreground">
+                  Enter the 6-digit code sent to
+                </p>
+                <p className="font-medium text-primary">{email}</p>
+              </div>
 
-                  <p className="text-xs text-center text-muted-foreground">
-                    We'll send a 6-digit code to your email
-                  </p>
-                </>
-              ) : (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={resetOtpFlow}
-                    className="gap-1 -ml-2 mb-2"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back
-                  </Button>
+              <div className="space-y-2">
+                <Label htmlFor="otp-code">Verification Code</Label>
+                <Input
+                  id="otp-code"
+                  type="text"
+                  placeholder="000000"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="text-center text-2xl font-mono tracking-widest"
+                  maxLength={6}
+                  disabled={loading}
+                  autoFocus
+                />
+              </div>
 
-                  <div className="text-center mb-4">
-                    <p className="text-sm text-muted-foreground">
-                      Enter the 6-digit code sent to
-                    </p>
-                    <p className="font-medium">{email}</p>
-                  </div>
+              <Button
+                onClick={handleVerifyOtp}
+                disabled={loading || otp.length !== 6}
+                className="w-full gap-2"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-4 w-4" />
+                )}
+                Verify & Continue
+              </Button>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="otp-code">Verification Code</Label>
-                    <Input
-                      id="otp-code"
-                      type="text"
-                      placeholder="000000"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      className="text-center text-2xl font-mono tracking-widest"
-                      maxLength={6}
-                      disabled={loading}
-                    />
-                  </div>
-
-                  <Button
-                    onClick={handleVerifyOtp}
-                    disabled={loading || otp.length !== 6}
-                    className="w-full gap-2"
-                  >
-                    {loading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <KeyRound className="h-4 w-4" />
-                    )}
-                    Verify & Sign In
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleSendOtp}
-                    disabled={loading}
-                    className="w-full text-sm"
-                  >
-                    Didn't receive code? Resend
-                  </Button>
-                </>
-              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleResendOtp}
+                disabled={loading}
+                className="w-full text-sm"
+              >
+                Didn't receive code? Resend
+              </Button>
             </div>
           ) : (
-            /* Password Login Flow */
+            /* Credentials Step */
             <Tabs value={authMode} onValueChange={(v) => setAuthMode(v as 'signin' | 'signup')}>
               <TabsList className="grid w-full grid-cols-2 mb-4">
                 <TabsTrigger value="signin">Sign In</TabsTrigger>
@@ -361,6 +326,11 @@ export default function AuthPage() {
                   )}
                   Sign In
                 </Button>
+
+                <p className="text-xs text-center text-muted-foreground">
+                  <ShieldCheck className="inline h-3 w-3 mr-1" />
+                  You'll receive a verification code via email
+                </p>
               </TabsContent>
 
               <TabsContent value="signup" className="space-y-4">
@@ -403,6 +373,11 @@ export default function AuthPage() {
                   )}
                   Create Account
                 </Button>
+
+                <p className="text-xs text-center text-muted-foreground">
+                  <ShieldCheck className="inline h-3 w-3 mr-1" />
+                  You'll receive a verification code via email
+                </p>
               </TabsContent>
             </Tabs>
           )}
