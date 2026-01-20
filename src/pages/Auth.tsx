@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,34 +13,46 @@ import { z } from 'zod';
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
 
-type AuthStep = 'credentials' | 'otp-verification';
+type AuthStep = 'credentials' | 'otp-verification' | 'forgot-password' | 'reset-password';
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [authStep, setAuthStep] = useState<AuthStep>('credentials');
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [pendingSession, setPendingSession] = useState<any>(null);
 
   useEffect(() => {
+    // Check if this is a password reset callback
+    const type = searchParams.get('type');
+    if (type === 'recovery') {
+      setAuthStep('reset-password');
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+      if (session && authStep === 'credentials') {
         navigate('/');
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // Only auto-navigate if we're not in the middle of 2FA
+      if (event === 'PASSWORD_RECOVERY') {
+        setAuthStep('reset-password');
+        return;
+      }
+      
       if (session && authStep === 'credentials') {
         navigate('/');
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate, authStep]);
+  }, [navigate, authStep, searchParams]);
 
   const validateEmail = (email: string): boolean => {
     const result = emailSchema.safeParse(email);
@@ -57,7 +69,6 @@ export default function AuthPage() {
 
   const sendOtpForVerification = async (userEmail: string) => {
     try {
-      // First sign out to clear the session (we'll complete login after OTP)
       await supabase.auth.signOut();
       
       const { error } = await supabase.auth.signInWithOtp({
@@ -136,7 +147,6 @@ export default function AuthPage() {
     setLoading(true);
     try {
       if (authMode === 'signup') {
-        // For signup, create account then send OTP for verification
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -147,7 +157,6 @@ export default function AuthPage() {
 
         if (error) throw error;
 
-        // Send OTP for 2FA verification
         await sendOtpForVerification(email);
         
         toast({
@@ -155,7 +164,6 @@ export default function AuthPage() {
           description: 'Please verify with the code sent to your email',
         });
       } else {
-        // For signin, verify password first
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -163,7 +171,6 @@ export default function AuthPage() {
 
         if (error) throw error;
 
-        // Password verified, now send OTP for 2FA
         await sendOtpForVerification(email);
       }
     } catch (error: any) {
@@ -184,6 +191,81 @@ export default function AuthPage() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!validateEmail(email)) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth?type=recovery`,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Reset link sent!',
+        description: 'Check your email for the password reset link',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to send reset email',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    const passwordResult = passwordSchema.safeParse(password);
+    if (!passwordResult.success) {
+      toast({
+        title: 'Invalid password',
+        description: passwordResult.error.errors[0].message,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast({
+        title: 'Passwords do not match',
+        description: 'Please make sure both passwords are the same',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: password,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Password updated!',
+        description: 'Your password has been reset successfully',
+      });
+      
+      // Sign out and redirect to login
+      await supabase.auth.signOut();
+      setAuthStep('credentials');
+      setPassword('');
+      setConfirmPassword('');
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to reset password',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleResendOtp = async () => {
     setLoading(true);
     try {
@@ -193,7 +275,7 @@ export default function AuthPage() {
         description: 'Check your email for the new verification code',
       });
     } catch (error) {
-      // Error already handled in sendOtpForVerification
+      // Error already handled
     } finally {
       setLoading(false);
     }
@@ -202,6 +284,8 @@ export default function AuthPage() {
   const resetToCredentials = () => {
     setAuthStep('credentials');
     setOtp('');
+    setPassword('');
+    setConfirmPassword('');
   };
 
   return (
@@ -212,14 +296,118 @@ export default function AuthPage() {
             Grade Ace
           </h1>
           <p className="text-muted-foreground">
-            {authStep === 'otp-verification' 
-              ? 'Verify your identity' 
-              : 'Sign in to start grading'}
+            {authStep === 'otp-verification' && 'Verify your identity'}
+            {authStep === 'forgot-password' && 'Reset your password'}
+            {authStep === 'reset-password' && 'Create new password'}
+            {authStep === 'credentials' && 'Sign in to start grading'}
           </p>
         </div>
 
         <Card className="p-6 shadow-lg border-2">
-          {authStep === 'otp-verification' ? (
+          {authStep === 'reset-password' ? (
+            /* Reset Password Step */
+            <div className="space-y-4">
+              <div className="text-center mb-4">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Lock className="h-8 w-8 text-primary" />
+                </div>
+                <h2 className="text-lg font-semibold mb-1">Set New Password</h2>
+                <p className="text-sm text-muted-foreground">
+                  Enter your new password below
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirm Password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={loading}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Must be at least 6 characters
+                </p>
+              </div>
+
+              <Button
+                onClick={handleResetPassword}
+                disabled={loading || !password || !confirmPassword}
+                className="w-full gap-2"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Lock className="h-4 w-4" />
+                )}
+                Update Password
+              </Button>
+            </div>
+          ) : authStep === 'forgot-password' ? (
+            /* Forgot Password Step */
+            <div className="space-y-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetToCredentials}
+                className="gap-1 -ml-2 mb-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to login
+              </Button>
+
+              <div className="text-center mb-4">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Mail className="h-8 w-8 text-primary" />
+                </div>
+                <h2 className="text-lg font-semibold mb-1">Forgot Password?</h2>
+                <p className="text-sm text-muted-foreground">
+                  Enter your email and we'll send you a reset link
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">Email Address</Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
+                  autoFocus
+                />
+              </div>
+
+              <Button
+                onClick={handleForgotPassword}
+                disabled={loading || !email}
+                className="w-full gap-2"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Mail className="h-4 w-4" />
+                )}
+                Send Reset Link
+              </Button>
+            </div>
+          ) : authStep === 'otp-verification' ? (
             /* OTP Verification Step (2FA) */
             <div className="space-y-4">
               <Button
@@ -303,7 +491,17 @@ export default function AuthPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="signin-password">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="signin-password">Password</Label>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs text-muted-foreground hover:text-primary"
+                      onClick={() => setAuthStep('forgot-password')}
+                    >
+                      Forgot password?
+                    </Button>
+                  </div>
                   <Input
                     id="signin-password"
                     type="password"
