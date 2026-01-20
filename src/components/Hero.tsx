@@ -51,10 +51,10 @@ const Hero = ({ session }: { session: Session }) => {
             <span className="text-xs md:text-sm font-medium">AI-Powered OCR</span>
           </div>
           
-          <h1 className="text-2xl md:text-4xl lg:text-6xl font-bold leading-tight px-2">
-            Answer Sheet
+          <h1 className="text-xl md:text-3xl lg:text-5xl font-bold leading-tight px-2">
+            Automated Handwritten Objective
             <span className="block bg-gradient-to-r from-accent to-white bg-clip-text text-transparent">
-              Grading App
+              Answer Evaluation using ML
             </span>
           </h1>
           

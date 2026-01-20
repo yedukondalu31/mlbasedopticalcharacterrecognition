@@ -292,8 +292,8 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-primary/5 to-background">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-            Grade Ace
+          <h1 className="text-2xl md:text-3xl font-bold mb-2 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+            ML Answer Evaluator
           </h1>
           <p className="text-muted-foreground">
             {authStep === 'otp-verification' && 'Verify your identity'}
