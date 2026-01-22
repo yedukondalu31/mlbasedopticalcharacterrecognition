@@ -6,9 +6,8 @@ import { EvaluationResult } from "@/pages/Index";
 import { toast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { formatEvaluationExport } from '@/lib/excelFormatter';
+import { formatEvaluationExport, ExcelFormatter } from '@/lib/excelFormatter';
 import { useExportSettings } from '@/hooks/useExportSettings';
-import * as XLSX from 'xlsx';
 
 interface ResultsDashboardProps {
   result: EvaluationResult;
@@ -33,10 +32,10 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
     });
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     try {
       // Use the new formatter with custom settings
-      formatEvaluationExport(settings, {
+      await formatEvaluationExport(settings, {
         rollNumber,
         subjectCode,
         score,
@@ -91,8 +90,8 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
         return;
       }
 
-      // Create workbook
-      const wb = XLSX.utils.book_new();
+      // Create workbook using ExcelJS
+      const formatter = new ExcelFormatter(settings);
 
       // === SUMMARY SHEET ===
       const summaryData = [
@@ -107,9 +106,7 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
         { 'Metric': 'Medium Confidence', 'Value': evaluations.filter(e => e.confidence === 'medium').length },
         { 'Metric': 'Low Confidence', 'Value': evaluations.filter(e => e.confidence === 'low').length },
       ];
-      const summaryWs = XLSX.utils.json_to_sheet(summaryData);
-      summaryWs['!cols'] = [{ wch: 20 }, { wch: 30 }];
-      XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+      formatter.addSheet('Summary', summaryData, [{ wch: 20 }, { wch: 30 }]);
 
       // === DETAILED RESULTS SHEET ===
       const detailedData = evaluations.map(e => ({
@@ -122,12 +119,10 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
         'Date': new Date(e.created_at).toLocaleDateString(),
         'Time': new Date(e.created_at).toLocaleTimeString(),
       }));
-      const detailedWs = XLSX.utils.json_to_sheet(detailedData);
-      detailedWs['!cols'] = [
+      formatter.addSheet('Detailed Results', detailedData, [
         { wch: 15 }, { wch: 15 }, { wch: 8 }, { wch: 8 }, 
         { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }
-      ];
-      XLSX.utils.book_append_sheet(wb, detailedWs, 'Detailed Results');
+      ]);
 
       // === SUBJECT-WISE SHEETS WITH ANSWERS ===
       const groupedBySubject: { [key: string]: any[] } = {};
@@ -160,7 +155,6 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
       // Add sheets for each subject
       Object.keys(groupedBySubject).sort().forEach(subjectCode => {
         const sheetData = groupedBySubject[subjectCode];
-        const ws = XLSX.utils.json_to_sheet(sheetData);
         
         // Set column widths
         const colWidths = [
@@ -180,8 +174,7 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
           colWidths.push({ wch: 4 });  // Status
         }
         
-        ws['!cols'] = colWidths;
-        XLSX.utils.book_append_sheet(wb, ws, subjectCode.substring(0, 31));
+        formatter.addSheet(subjectCode.substring(0, 31), sheetData, colWidths);
       });
 
       // === ANSWER KEY REFERENCE SHEET ===
@@ -204,18 +197,16 @@ const ResultsDashboard = ({ result, uploadedImage, onReset }: ResultsDashboardPr
       });
       
       if (answerKeyData.length > 0) {
-        const answerKeyWs = XLSX.utils.json_to_sheet(answerKeyData);
         const akColWidths = [{ wch: 15 }];
         for (let i = 0; i < 20; i++) {
           akColWidths.push({ wch: 5 });
         }
-        answerKeyWs['!cols'] = akColWidths;
-        XLSX.utils.book_append_sheet(wb, answerKeyWs, 'Answer Keys');
+        formatter.addSheet('Answer Keys', answerKeyData, akColWidths);
       }
 
       // Generate file and download
       const fileName = `OMR_Advanced_Results_${new Date().toISOString().split('T')[0]}.xlsx`;
-      XLSX.writeFile(wb, fileName);
+      await formatter.generateFile(fileName);
 
       toast({
         title: "Export successful! 📊",
