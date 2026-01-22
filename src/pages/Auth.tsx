@@ -25,6 +25,8 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [authStep, setAuthStep] = useState<AuthStep>('credentials');
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [otpCountdown, setOtpCountdown] = useState(60);
+  const [canResend, setCanResend] = useState(false);
 
   useEffect(() => {
     // Check if this is a password reset callback
@@ -54,6 +56,27 @@ export default function AuthPage() {
     return () => subscription.unsubscribe();
   }, [navigate, authStep, searchParams]);
 
+  // OTP countdown timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (authStep === 'otp-verification' && otpCountdown > 0) {
+      interval = setInterval(() => {
+        setOtpCountdown((prev) => {
+          if (prev <= 1) {
+            setCanResend(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [authStep, otpCountdown]);
+
   const validateEmail = (email: string): boolean => {
     const result = emailSchema.safeParse(email);
     if (!result.success) {
@@ -81,6 +104,8 @@ export default function AuthPage() {
       if (error) throw error;
 
       setAuthStep('otp-verification');
+      setOtpCountdown(60);
+      setCanResend(false);
       toast({
         title: 'Verification Required',
         description: 'A 6-digit code has been sent to your email for verification',
@@ -286,6 +311,14 @@ export default function AuthPage() {
     setOtp('');
     setPassword('');
     setConfirmPassword('');
+    setOtpCountdown(60);
+    setCanResend(false);
+  };
+
+  const formatCountdown = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -444,11 +477,27 @@ export default function AuthPage() {
                   disabled={loading}
                   autoFocus
                 />
+                
+                {/* Countdown Timer */}
+                <div className="text-center mt-3">
+                  {otpCountdown > 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Code expires in{' '}
+                      <span className={`font-mono font-semibold ${otpCountdown <= 10 ? 'text-destructive' : 'text-primary'}`}>
+                        {formatCountdown(otpCountdown)}
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="text-sm text-destructive font-medium">
+                      Code expired. Please request a new one.
+                    </p>
+                  )}
+                </div>
               </div>
 
               <Button
                 onClick={handleVerifyOtp}
-                disabled={loading || otp.length !== 6}
+                disabled={loading || otp.length !== 6 || otpCountdown === 0}
                 className="w-full gap-2"
               >
                 {loading ? (
@@ -460,13 +509,20 @@ export default function AuthPage() {
               </Button>
 
               <Button
-                variant="ghost"
+                variant={canResend ? "default" : "ghost"}
                 size="sm"
                 onClick={handleResendOtp}
-                disabled={loading}
-                className="w-full text-sm"
+                disabled={loading || !canResend}
+                className={`w-full text-sm ${canResend ? 'animate-pulse' : ''}`}
               >
-                Didn't receive code? Resend
+                {canResend ? (
+                  <>
+                    <Mail className="h-4 w-4 mr-1" />
+                    Resend Code Now
+                  </>
+                ) : (
+                  `Resend code in ${formatCountdown(otpCountdown)}`
+                )}
               </Button>
             </div>
           ) : (
