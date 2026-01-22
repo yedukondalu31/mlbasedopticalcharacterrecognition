@@ -1,61 +1,18 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { ExportSettings } from '@/hooks/useExportSettings';
 
-interface CellStyle {
-  fill?: { fgColor: { rgb: string } };
-  font?: { name?: string; sz?: number; bold?: boolean; color?: { rgb: string } };
-  alignment?: { horizontal?: string; vertical?: string };
-  border?: {
-    top?: { style: string; color: { rgb: string } };
-    bottom?: { style: string; color: { rgb: string } };
-    left?: { style: string; color: { rgb: string } };
-    right?: { style: string; color: { rgb: string } };
-  };
-}
-
 export class ExcelFormatter {
-  private wb: XLSX.WorkBook;
+  private wb: ExcelJS.Workbook;
   private settings: ExportSettings;
 
   constructor(settings: ExportSettings) {
-    this.wb = XLSX.utils.book_new();
+    this.wb = new ExcelJS.Workbook();
     this.settings = settings;
   }
 
-  private hexToRgb(hex: string): string {
-    // Remove # if present
+  private hexToArgb(hex: string): string {
     hex = hex.replace('#', '');
-    return hex.toUpperCase();
-  }
-
-  private applyHeaderStyle(ws: XLSX.WorkSheet, range: XLSX.Range, includeHeader: boolean = true) {
-    if (!includeHeader || !ws['!ref']) return;
-
-    const headerColor = this.hexToRgb(this.settings.headerColor);
-    
-    // Apply styles to header row
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-      const address = XLSX.utils.encode_cell({ r: 0, c: C });
-      if (!ws[address]) continue;
-      
-      if (!ws[address].s) ws[address].s = {};
-      ws[address].s = {
-        fill: { fgColor: { rgb: headerColor } },
-        font: {
-          name: this.settings.fontFamily,
-          sz: 12,
-          bold: true,
-          color: { rgb: 'FFFFFF' },
-        },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: {
-          top: { style: 'thin', color: { rgb: '000000' } },
-          bottom: { style: 'thin', color: { rgb: '000000' } },
-          left: { style: 'thin', color: { rgb: '000000' } },
-          right: { style: 'thin', color: { rgb: '000000' } },
-        },
-      };
-    }
+    return 'FF' + hex.toUpperCase();
   }
 
   private addHeaderInfo(sheetData: any[], sheetName: string): any[] {
@@ -63,47 +20,16 @@ export class ExcelFormatter {
 
     const headerRows: any[] = [];
 
-    // Add school name if available
     if (this.settings.schoolName) {
       headerRows.push({ '': this.settings.schoolName });
-      headerRows.push({ '': '' }); // Empty row
+      headerRows.push({ '': '' });
     }
 
-    // Add sheet title
     headerRows.push({ '': sheetName });
     headerRows.push({ '': `Generated: ${new Date().toLocaleString()}` });
-    headerRows.push({ '': '' }); // Empty row
+    headerRows.push({ '': '' });
 
     return [...headerRows, ...sheetData];
-  }
-
-  private addFooter(ws: XLSX.WorkSheet, lastRow: number) {
-    if (!this.settings.footerText || !ws['!ref']) return;
-
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    const footerRow = lastRow + 2;
-    const address = XLSX.utils.encode_cell({ r: footerRow, c: 0 });
-
-    ws[address] = {
-      t: 's',
-      v: this.settings.footerText,
-      s: {
-        font: {
-          name: this.settings.fontFamily,
-          sz: 9,
-          italic: true,
-          color: { rgb: '666666' },
-        },
-        alignment: { horizontal: 'center' },
-      },
-    };
-
-    // Merge footer across all columns
-    if (!ws['!merges']) ws['!merges'] = [];
-    ws['!merges'].push({
-      s: { r: footerRow, c: 0 },
-      e: { r: footerRow, c: range.e.c },
-    });
   }
 
   addSheet(
@@ -112,47 +38,93 @@ export class ExcelFormatter {
     columnWidths?: { wch: number }[],
     includeHeader: boolean = true
   ) {
-    // Add header info to data
     const formattedData = this.addHeaderInfo(data, sheetName);
+    const ws = this.wb.addWorksheet(sheetName.substring(0, 31));
 
-    // Create worksheet
-    const ws = XLSX.utils.json_to_sheet(formattedData);
+    if (formattedData.length === 0) return;
+
+    // Get headers from first data row
+    const headers = Object.keys(formattedData[0]);
+    
+    // Add header row
+    const headerRow = ws.addRow(headers);
+    
+    // Style header row
+    const headerColor = this.hexToArgb(this.settings.headerColor);
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: headerColor },
+      };
+      cell.font = {
+        name: this.settings.fontFamily,
+        size: 12,
+        bold: true,
+        color: { argb: 'FFFFFFFF' },
+      };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF000000' } },
+        bottom: { style: 'thin', color: { argb: 'FF000000' } },
+        left: { style: 'thin', color: { argb: 'FF000000' } },
+        right: { style: 'thin', color: { argb: 'FF000000' } },
+      };
+    });
+
+    // Add data rows
+    formattedData.forEach((row) => {
+      const values = headers.map((header) => row[header]);
+      ws.addRow(values);
+    });
 
     // Set column widths
     if (columnWidths) {
-      ws['!cols'] = columnWidths;
+      columnWidths.forEach((width, index) => {
+        const col = ws.getColumn(index + 1);
+        col.width = width.wch;
+      });
     }
 
-    // Apply header styles
-    if (ws['!ref']) {
-      const range = XLSX.utils.decode_range(ws['!ref']);
-      const dataStartRow = this.settings.includeHeader ? 5 : 0;
+    // Add footer if configured
+    if (this.settings.footerText) {
+      ws.addRow([]);
+      const footerRow = ws.addRow([this.settings.footerText]);
+      const footerCell = footerRow.getCell(1);
+      footerCell.font = {
+        name: this.settings.fontFamily,
+        size: 9,
+        italic: true,
+        color: { argb: 'FF666666' },
+      };
+      footerCell.alignment = { horizontal: 'center' };
       
-      // Apply header styles to data headers
-      this.applyHeaderStyle(
-        ws,
-        { s: { r: dataStartRow, c: range.s.c }, e: { r: dataStartRow, c: range.e.c } },
-        includeHeader
-      );
-
-      // Add footer
-      this.addFooter(ws, range.e.r);
+      // Merge footer cells
+      if (headers.length > 1) {
+        ws.mergeCells(footerRow.number, 1, footerRow.number, headers.length);
+      }
     }
-
-    // Add sheet to workbook
-    XLSX.utils.book_append_sheet(this.wb, ws, sheetName.substring(0, 31));
   }
 
-  generateFile(filename: string) {
-    XLSX.writeFile(this.wb, filename);
+  async generateFile(filename: string) {
+    const buffer = await this.wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    window.URL.revokeObjectURL(url);
   }
 
-  getWorkbook(): XLSX.WorkBook {
+  getWorkbook(): ExcelJS.Workbook {
     return this.wb;
   }
 }
 
-export const formatEvaluationExport = (
+export const formatEvaluationExport = async (
   settings: ExportSettings,
   evaluationData: {
     rollNumber?: string;
@@ -175,7 +147,7 @@ export const formatEvaluationExport = (
       note: string;
     }>;
   }
-): string => {
+): Promise<string> => {
   const formatter = new ExcelFormatter(settings);
 
   // Summary Sheet
@@ -277,25 +249,20 @@ export const formatEvaluationExport = (
   ];
   formatter.addSheet('Statistics', statsData, [{ wch: 20 }, { wch: 10 }, { wch: 15 }]);
 
-  // Answer Distribution Analysis (for batch exports)
+  // Answer Distribution Analysis
   const answerDistribution: { [key: string]: number } = {};
   evaluationData.correctAnswers.forEach((answer) => {
     answerDistribution[answer] = (answerDistribution[answer] || 0) + 1;
   });
 
-  const distributionData = [
-    { '': 'Answer Key Distribution', ' ': '', '  ': '' },
-    { '': '', ' ': '', '  ': '' },
-    { '': 'Option', ' ': 'Frequency', '  ': 'Chart' },
-  ];
-
+  const distributionData: any[] = [];
   ['A', 'B', 'C', 'D', 'E'].forEach((option) => {
     const count = answerDistribution[option] || 0;
     const percentage = (count / evaluationData.totalQuestions) * 100;
     distributionData.push({
-      '': option,
-      ' ': String(count),
-      '  ': '█'.repeat(Math.floor(percentage / 2)),
+      Option: option,
+      Frequency: count,
+      Chart: '█'.repeat(Math.floor(percentage / 2)),
     });
   });
 
@@ -343,10 +310,8 @@ export const formatEvaluationExport = (
     mistakePatterns[pattern] = (mistakePatterns[pattern] || 0) + 1;
   });
 
-  const commonMistakesData = [
+  const commonMistakesData: any[] = [
     { Metric: 'Total Wrong Answers', Value: mistakes.length, Percentage: '' },
-    { Metric: 'Most Common Errors', Value: '', Percentage: '' },
-    { Metric: '', Value: '', Percentage: '' },
   ];
 
   Object.entries(mistakePatterns)
@@ -361,7 +326,6 @@ export const formatEvaluationExport = (
     });
 
   if (mistakes.length > 0) {
-    commonMistakesData.push({ Metric: '', Value: '', Percentage: '' });
     commonMistakesData.push({
       Metric: 'Wrong Questions',
       Value: mistakes.map((m) => `Q${m.question}`).join(', '),
@@ -375,45 +339,7 @@ export const formatEvaluationExport = (
   const highConfCount = evaluationData.detailedResults?.filter((r) => r.confidence === 'high').length || 0;
   const mediumConfCount = evaluationData.detailedResults?.filter((r) => r.confidence === 'medium').length || 0;
   const lowConfCount = evaluationData.detailedResults?.filter((r) => r.confidence === 'low').length || 0;
-  const unknownConfCount = evaluationData.totalQuestions - highConfCount - mediumConfCount - lowConfCount;
 
-  const confDistributionData = [
-    { '': 'Confidence Distribution Chart', ' ': '', '  ': '', '   ': '' },
-    { '': '', ' ': '', '  ': '', '   ': '' },
-    {
-      '': 'High',
-      ' ': highConfCount,
-      '  ': `${((highConfCount / evaluationData.totalQuestions) * 100).toFixed(1)}%`,
-      '   ': '█'.repeat(Math.floor((highConfCount / evaluationData.totalQuestions) * 50)),
-    },
-    {
-      '': 'Medium',
-      ' ': mediumConfCount,
-      '  ': `${((mediumConfCount / evaluationData.totalQuestions) * 100).toFixed(1)}%`,
-      '   ': '█'.repeat(Math.floor((mediumConfCount / evaluationData.totalQuestions) * 50)),
-    },
-    {
-      '': 'Low',
-      ' ': lowConfCount,
-      '  ': `${((lowConfCount / evaluationData.totalQuestions) * 100).toFixed(1)}%`,
-      '   ': '█'.repeat(Math.floor((lowConfCount / evaluationData.totalQuestions) * 50)),
-    },
-    ...(unknownConfCount > 0
-      ? [
-          {
-            '': 'Unknown',
-            ' ': unknownConfCount,
-            '  ': `${((unknownConfCount / evaluationData.totalQuestions) * 100).toFixed(1)}%`,
-            '   ': '█'.repeat(Math.floor((unknownConfCount / evaluationData.totalQuestions) * 50)),
-          },
-        ]
-      : []),
-    { '': '', ' ': '', '  ': '', '   ': '' },
-    { '': 'Confidence vs Accuracy', ' ': '', '  ': '', '   ': '' },
-    { '': '', ' ': '', '  ': '', '   ': '' },
-  ];
-
-  // Confidence vs Accuracy Analysis
   const highConfCorrect = evaluationData.detailedResults?.filter(
     (r) => r.confidence === 'high' && r.isCorrect
   ).length || 0;
@@ -424,38 +350,32 @@ export const formatEvaluationExport = (
     (r) => r.confidence === 'low' && r.isCorrect
   ).length || 0;
 
-  confDistributionData.push(
+  const confDistributionData = [
     {
-      '': 'Confidence Level',
-      ' ': 'Total',
-      '  ': 'Correct',
-      '   ': 'Accuracy',
+      'Confidence Level': 'High',
+      'Total': highConfCount,
+      'Correct': highConfCorrect,
+      'Accuracy': highConfCount > 0 ? `${((highConfCorrect / highConfCount) * 100).toFixed(1)}%` : 'N/A',
     },
     {
-      '': 'High',
-      ' ': String(highConfCount),
-      '  ': String(highConfCorrect),
-      '   ': highConfCount > 0 ? `${((highConfCorrect / highConfCount) * 100).toFixed(1)}%` : 'N/A',
+      'Confidence Level': 'Medium',
+      'Total': mediumConfCount,
+      'Correct': mediumConfCorrect,
+      'Accuracy': mediumConfCount > 0 ? `${((mediumConfCorrect / mediumConfCount) * 100).toFixed(1)}%` : 'N/A',
     },
     {
-      '': 'Medium',
-      ' ': String(mediumConfCount),
-      '  ': String(mediumConfCorrect),
-      '   ': mediumConfCount > 0 ? `${((mediumConfCorrect / mediumConfCount) * 100).toFixed(1)}%` : 'N/A',
+      'Confidence Level': 'Low',
+      'Total': lowConfCount,
+      'Correct': lowConfCorrect,
+      'Accuracy': lowConfCount > 0 ? `${((lowConfCorrect / lowConfCount) * 100).toFixed(1)}%` : 'N/A',
     },
-    {
-      '': 'Low',
-      ' ': String(lowConfCount),
-      '  ': String(lowConfCorrect),
-      '   ': lowConfCount > 0 ? `${((lowConfCorrect / lowConfCount) * 100).toFixed(1)}%` : 'N/A',
-    }
-  );
+  ];
 
   formatter.addSheet('Confidence Analysis', confDistributionData, [
     { wch: 20 },
     { wch: 10 },
     { wch: 12 },
-    { wch: 50 },
+    { wch: 12 },
   ]);
 
   // Performance Insights
@@ -463,7 +383,7 @@ export const formatEvaluationExport = (
   const performanceLevel =
     avgAccuracy >= 90 ? 'Excellent' : avgAccuracy >= 75 ? 'Good' : avgAccuracy >= 60 ? 'Average' : avgAccuracy >= 50 ? 'Below Average' : 'Poor';
 
-  const insightsData = [
+  const insightsData: any[] = [
     { Insight: 'Overall Performance', Value: performanceLevel, Recommendation: '' },
     {
       Insight: 'Score',
@@ -471,7 +391,6 @@ export const formatEvaluationExport = (
       Recommendation: '',
     },
     { Insight: 'Accuracy', Value: `${avgAccuracy.toFixed(2)}%`, Recommendation: '' },
-    { Insight: '', Value: '', Recommendation: '' },
     {
       Insight: 'Attempted Questions',
       Value: attemptedQuestions,
@@ -498,14 +417,11 @@ export const formatEvaluationExport = (
             ? 'Image quality is fair. Ensure sheets are flat and well-lit for best results.'
             : 'Good image quality.',
     },
-    { Insight: '', Value: '', Recommendation: '' },
-    { Insight: 'Areas for Improvement', Value: '', Recommendation: '' },
   ];
 
   if (mistakes.length > 0) {
-    const firstMistake = mistakes[0];
     insightsData.push({
-      Insight: `Most errors`,
+      Insight: 'Most errors',
       Value: mistakes.length,
       Recommendation: `Review questions: ${mistakes.slice(0, 5).map((m) => m.question).join(', ')}${mistakes.length > 5 ? '...' : ''}`,
     });
@@ -532,11 +448,11 @@ export const formatEvaluationExport = (
       }.xlsx`
     : `Evaluation_${new Date().toISOString().split('T')[0]}.xlsx`;
 
-  formatter.generateFile(filename);
+  await formatter.generateFile(filename);
   return filename;
 };
 
-export const formatBatchExport = (
+export const formatBatchExport = async (
   settings: ExportSettings,
   items: Array<{
     fileName: string;
@@ -549,7 +465,7 @@ export const formatBatchExport = (
     error?: string;
   }>,
   answerKey?: string[]
-): string => {
+): Promise<string> => {
   const formatter = new ExcelFormatter(settings);
   const completedItems = items.filter((item) => item.status === 'completed');
   const errorCount = items.filter((item) => item.status === 'error').length;
@@ -637,8 +553,8 @@ export const formatBatchExport = (
 
   // Answer Key Sheet
   if (answerKey && answerKey.length > 0) {
-    const answerKeyData: any[] = [{ Info: 'Answer Key Used' }];
-    const keyRow: any = {};
+    const answerKeyData: any[] = [];
+    const keyRow: any = { Info: 'Answer Key Used' };
     answerKey.forEach((ans, idx) => {
       keyRow[`Q${idx + 1}`] = ans;
     });
@@ -664,8 +580,6 @@ export const formatBatchExport = (
   // Batch Performance Analytics
   if (completedItems.length > 0) {
     const batchAnalyticsData = [
-      { Metric: 'Batch Performance Overview', Value: '', Details: '' },
-      { Metric: '', Value: '', Details: '' },
       {
         Metric: 'Highest Score',
         Value: Math.max(...completedItems.map((i) => i.score || 0)),
@@ -685,7 +599,6 @@ export const formatBatchExport = (
           : 0,
         Details: '',
       },
-      { Metric: '', Value: '', Details: '' },
       {
         Metric: 'Students >= 90%',
         Value: completedItems.filter((i) => (i.accuracy || 0) >= 90).length,
@@ -719,19 +632,15 @@ export const formatBatchExport = (
       'Below 50%': completedItems.filter((i) => (i.accuracy || 0) < 50).length,
     };
 
-    const scoreDistData = [
-      { '': 'Score Distribution', ' ': '', '  ': '', '   ': '' },
-      { '': '', ' ': '', '  ': '', '   ': '' },
-      { '': 'Range', ' ': 'Count', '  ': 'Percentage', '   ': 'Visual' },
-    ];
+    const scoreDistData: any[] = [];
 
     Object.entries(scoreRanges).forEach(([range, count]) => {
       const percentage = (count / completedItems.length) * 100;
       scoreDistData.push({
-        '': range,
-        ' ': String(count),
-        '  ': `${percentage.toFixed(1)}%`,
-        '   ': '█'.repeat(Math.floor(percentage / 2)),
+        Range: range,
+        Count: count,
+        Percentage: `${percentage.toFixed(1)}%`,
+        Visual: '█'.repeat(Math.floor(percentage / 2)),
       });
     });
 
@@ -747,6 +656,6 @@ export const formatBatchExport = (
   const fileName = `Batch_Results_${new Date().toISOString().split('T')[0]}_${
     completedItems.length
   }students.xlsx`;
-  formatter.generateFile(fileName);
+  await formatter.generateFile(fileName);
   return fileName;
 };
