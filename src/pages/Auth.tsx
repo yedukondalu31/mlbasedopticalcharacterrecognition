@@ -94,10 +94,12 @@ export default function AuthPage() {
     try {
       await supabase.auth.signOut();
       
+      // Send magic link email for verification
       const { error } = await supabase.auth.signInWithOtp({
         email: userEmail,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
+          shouldCreateUser: false,
         },
       });
 
@@ -107,13 +109,13 @@ export default function AuthPage() {
       setOtpCountdown(60);
       setCanResend(false);
       toast({
-        title: 'Verification Required',
-        description: 'A 6-digit code has been sent to your email for verification',
+        title: 'Verification Email Sent',
+        description: 'Check your email and click the verification link, or enter the 6-digit code if provided',
       });
     } catch (error: any) {
       toast({
-        title: 'Error sending verification code',
-        description: error.message || 'Failed to send verification code',
+        title: 'Error sending verification',
+        description: error.message || 'Failed to send verification email',
         variant: 'destructive',
       });
       throw error;
@@ -135,7 +137,7 @@ export default function AuthPage() {
       const { error } = await supabase.auth.verifyOtp({
         email,
         token: otp,
-        type: 'email',
+        type: 'magiclink',
       });
 
       if (error) throw error;
@@ -148,13 +150,14 @@ export default function AuthPage() {
     } catch (error: any) {
       toast({
         title: 'Verification failed',
-        description: error.message || 'Invalid or expired code',
+        description: error.message || 'Invalid or expired code. Try clicking the link in your email instead.',
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
   };
+
 
   const handlePasswordAuth = async () => {
     if (!validateEmail(email)) return;
@@ -457,11 +460,14 @@ export default function AuthPage() {
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
                   <ShieldCheck className="h-8 w-8 text-primary" />
                 </div>
-                <h2 className="text-lg font-semibold mb-1">Two-Factor Verification</h2>
+                <h2 className="text-lg font-semibold mb-1">Check Your Email</h2>
                 <p className="text-sm text-muted-foreground">
-                  Enter the 6-digit code sent to
+                  We sent a verification link to
                 </p>
                 <p className="font-medium text-primary">{email}</p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Click the link in your email to continue, or enter the code below if provided
+                </p>
               </div>
 
               <div className="space-y-2">
