@@ -92,30 +92,28 @@ export default function AuthPage() {
 
   const sendOtpForVerification = async (userEmail: string) => {
     try {
-      await supabase.auth.signOut();
-      
-      // Send magic link email for verification
-      const { error } = await supabase.auth.signInWithOtp({
-        email: userEmail,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`,
-          shouldCreateUser: false,
+      // Call the custom send-otp edge function
+      const { data, error } = await supabase.functions.invoke('send-otp', {
+        body: {
+          email: userEmail,
+          action: 'send',
         },
       });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
       setAuthStep('otp-verification');
       setOtpCountdown(60);
       setCanResend(false);
       toast({
-        title: 'Verification Email Sent',
-        description: 'Check your email and click the verification link, or enter the 6-digit code if provided',
+        title: 'Verification Code Sent',
+        description: 'A 6-digit code has been sent to your email',
       });
     } catch (error: any) {
       toast({
-        title: 'Error sending verification',
-        description: error.message || 'Failed to send verification email',
+        title: 'Error sending verification code',
+        description: error.message || 'Failed to send verification code',
         variant: 'destructive',
       });
       throw error;
@@ -134,13 +132,26 @@ export default function AuthPage() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token: otp,
-        type: 'magiclink',
+      // Verify the OTP with our custom edge function
+      const { data, error: invokeError } = await supabase.functions.invoke('send-otp', {
+        body: {
+          email,
+          action: 'verify',
+          code: otp,
+        },
       });
 
-      if (error) throw error;
+      if (invokeError) throw invokeError;
+      if (!data?.success) throw new Error(data?.error || 'Invalid or expired code');
+
+      // OTP verified - now sign in the user with their password
+      // We already validated their password earlier, so we can proceed
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) throw signInError;
 
       toast({
         title: 'Verified!',
@@ -150,7 +161,7 @@ export default function AuthPage() {
     } catch (error: any) {
       toast({
         title: 'Verification failed',
-        description: error.message || 'Invalid or expired code. Try clicking the link in your email instead.',
+        description: error.message || 'Invalid or expired code',
         variant: 'destructive',
       });
     } finally {
@@ -185,19 +196,26 @@ export default function AuthPage() {
 
         if (error) throw error;
 
+        // Sign out immediately - we'll sign back in after OTP verification
+        await supabase.auth.signOut();
+        
         await sendOtpForVerification(email);
         
         toast({
           title: 'Account created!',
-          description: 'Please verify with the code sent to your email',
+          description: 'Please verify with the 6-digit code sent to your email',
         });
       } else {
+        // For sign-in, validate credentials first
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
         if (error) throw error;
+
+        // Sign out immediately - we'll sign back in after OTP verification
+        await supabase.auth.signOut();
 
         await sendOtpForVerification(email);
       }
@@ -460,13 +478,13 @@ export default function AuthPage() {
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
                   <ShieldCheck className="h-8 w-8 text-primary" />
                 </div>
-                <h2 className="text-lg font-semibold mb-1">Check Your Email</h2>
+                <h2 className="text-lg font-semibold mb-1">Two-Factor Verification</h2>
                 <p className="text-sm text-muted-foreground">
-                  We sent a verification link to
+                  Enter the 6-digit code sent to
                 </p>
                 <p className="font-medium text-primary">{email}</p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Click the link in your email to continue, or enter the code below if provided
+                  The code expires in 60 seconds
                 </p>
               </div>
 
