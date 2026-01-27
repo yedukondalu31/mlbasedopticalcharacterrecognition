@@ -72,7 +72,7 @@ serve(async (req) => {
           Authorization: `Bearer ${RESEND_API_KEY}`,
         },
         body: JSON.stringify({
-          from: "ML Answer Evaluator <noreply@mlanswerevaluator.com>",
+          from: "ML Answer Evaluator <onboarding@resend.dev>",
           to: [email],
           subject: "Your Verification Code",
           html: `
