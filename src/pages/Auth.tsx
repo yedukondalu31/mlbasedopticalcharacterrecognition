@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,9 @@ export default function AuthPage() {
   const [otpCountdown, setOtpCountdown] = useState(60);
   const [canResend, setCanResend] = useState(false);
 
+  // Prevent redirect-to-home while we're intentionally doing the custom OTP flow.
+  const suppressRedirectRef = useRef(false);
+
   useEffect(() => {
     // Check if this is a password reset callback
     const type = searchParams.get('type');
@@ -43,7 +46,7 @@ export default function AuthPage() {
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session && authStep === 'credentials') {
+      if (session && authStep === 'credentials' && !suppressRedirectRef.current) {
         navigate('/');
       }
     });
@@ -53,8 +56,8 @@ export default function AuthPage() {
         setAuthStep('reset-password');
         return;
       }
-      
-      if (session && authStep === 'credentials') {
+
+      if (session && authStep === 'credentials' && !suppressRedirectRef.current) {
         navigate('/');
       }
     });
@@ -98,7 +101,7 @@ export default function AuthPage() {
 
   const sendOtpForVerification = async (userEmail: string) => {
     try {
-      // Call the custom send-otp edge function
+      // Call the custom send-otp backend function
       const { data, error } = await supabase.functions.invoke('send-otp', {
         body: {
           email: userEmail,
@@ -117,6 +120,9 @@ export default function AuthPage() {
         description: 'A 6-digit code has been sent to your email',
       });
     } catch (error: any) {
+      // If we failed to start the OTP step, re-enable normal redirects.
+      suppressRedirectRef.current = false;
+
       toast({
         title: 'Error sending verification code',
         description: error.message || 'Failed to send verification code',
@@ -159,6 +165,9 @@ export default function AuthPage() {
 
       if (signInError) throw signInError;
 
+      // Allow normal redirects again.
+      suppressRedirectRef.current = false;
+
       toast({
         title: 'Verified!',
         description: 'You are now logged in',
@@ -190,9 +199,12 @@ export default function AuthPage() {
     }
 
     setLoading(true);
+    // Avoid redirecting to / when a temporary auth session is created.
+    suppressRedirectRef.current = true;
+
     try {
       if (authMode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -202,18 +214,18 @@ export default function AuthPage() {
 
         if (error) throw error;
 
-        // Sign out immediately - we'll sign back in after OTP verification
+        // Ensure there's no active session before OTP verification.
         await supabase.auth.signOut();
-        
+
         await sendOtpForVerification(email);
-        
+
         toast({
           title: 'Account created!',
           description: 'Please verify with the 6-digit code sent to your email',
         });
       } else {
         // For sign-in, validate credentials first
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
@@ -226,13 +238,16 @@ export default function AuthPage() {
         await sendOtpForVerification(email);
       }
     } catch (error: any) {
+      // If we failed to start the OTP flow, re-enable normal redirects.
+      suppressRedirectRef.current = false;
+
       let message = error.message;
       if (error.message?.includes('User already registered')) {
         message = 'This email is already registered. Please sign in instead.';
       } else if (error.message?.includes('Invalid login credentials')) {
         message = 'Invalid email or password. Please try again.';
       }
-      
+
       toast({
         title: authMode === 'signup' ? 'Sign up failed' : 'Sign in failed',
         description: message,
@@ -334,6 +349,7 @@ export default function AuthPage() {
   };
 
   const resetToCredentials = () => {
+    suppressRedirectRef.current = false;
     setAuthStep('credentials');
     setOtp('');
     setPassword('');
