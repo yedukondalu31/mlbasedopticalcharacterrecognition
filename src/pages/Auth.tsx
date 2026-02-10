@@ -217,12 +217,22 @@ export default function AuthPage() {
         // Ensure there's no active session before OTP verification.
         await supabase.auth.signOut();
 
-        await sendOtpForVerification(email);
-
-        toast({
-          title: 'Account created!',
-          description: 'Please verify with the 6-digit code sent to your email',
-        });
+        try {
+          await sendOtpForVerification(email);
+          toast({
+            title: 'Account created!',
+            description: 'Please verify with the 6-digit code sent to your email',
+          });
+        } catch {
+          // OTP failed but account was created — allow sign-in retry
+          toast({
+            title: 'Account created!',
+            description: 'Verification email could not be sent. Please sign in to retry.',
+          });
+          suppressRedirectRef.current = false;
+          setAuthMode('signin');
+          setAuthStep('credentials');
+        }
       } else {
         // For sign-in, validate credentials first
         const { error } = await supabase.auth.signInWithPassword({
