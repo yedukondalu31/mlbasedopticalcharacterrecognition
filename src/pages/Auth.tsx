@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
-import { Mail, Loader2, KeyRound, Lock, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { Mail, Loader2, KeyRound, Lock, ArrowLeft, ShieldCheck, CheckCircle2, PartyPopper } from 'lucide-react';
 import { z } from 'zod';
 import {
   InputOTP,
@@ -19,7 +19,7 @@ import {
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
 
-type AuthStep = 'credentials' | 'otp-verification' | 'forgot-password' | 'reset-password';
+type AuthStep = 'credentials' | 'otp-verification' | 'forgot-password' | 'reset-password' | 'success';
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -167,13 +167,11 @@ export default function AuthPage() {
       // Allow normal redirects again.
       suppressRedirectRef.current = false;
 
-      toast({
-        title: authMode === 'signup' ? '🎉 Account Created Successfully!' : 'Verified!',
-        description: authMode === 'signup'
-          ? 'Your account has been created and verified. Welcome aboard!'
-          : 'You are now logged in',
-      });
-      navigate('/');
+      // Show success celebration screen before redirecting
+      setAuthStep('success');
+      setTimeout(() => {
+        navigate('/');
+      }, 2500);
     } catch (error: any) {
       toast({
         title: 'Verification failed',
@@ -383,6 +381,7 @@ export default function AuthPage() {
             ML Answer Evaluator
           </h1>
           <p className="text-muted-foreground">
+            {authStep === 'success' && (authMode === 'signup' ? 'Welcome aboard!' : 'Welcome back!')}
             {authStep === 'otp-verification' && 'Verify your identity'}
             {authStep === 'forgot-password' && 'Reset your password'}
             {authStep === 'reset-password' && 'Create new password'}
@@ -391,7 +390,35 @@ export default function AuthPage() {
         </div>
 
         <Card className="p-6 shadow-lg border-2">
-          {authStep === 'reset-password' ? (
+          {authStep === 'success' ? (
+            /* Success Celebration Step */
+            <div className="space-y-6 py-4 animate-fade-in">
+              <div className="text-center">
+                <div className="relative w-20 h-20 mx-auto mb-5">
+                  <div className="absolute inset-0 rounded-full bg-green-500/20 animate-[pulse_1.5s_ease-in-out_infinite]" />
+                  <div className="relative w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center animate-scale-in">
+                    {authMode === 'signup' ? (
+                      <PartyPopper className="h-10 w-10 text-green-600" />
+                    ) : (
+                      <CheckCircle2 className="h-10 w-10 text-green-600" />
+                    )}
+                  </div>
+                </div>
+                <h2 className="text-xl font-bold mb-2 text-foreground">
+                  {authMode === 'signup' ? '🎉 Account Created!' : '✅ Verified!'}
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  {authMode === 'signup'
+                    ? 'Your account has been created and verified successfully.'
+                    : 'Your identity has been verified successfully.'}
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Redirecting you to the dashboard...</span>
+              </div>
+            </div>
+          ) : authStep === 'reset-password' ? (
             /* Reset Password Step */
             <div className="space-y-4">
               <div className="text-center mb-4">
