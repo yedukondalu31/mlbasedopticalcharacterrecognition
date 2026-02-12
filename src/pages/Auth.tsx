@@ -157,7 +157,6 @@ export default function AuthPage() {
       if (!data?.success) throw new Error(data?.error || 'Invalid or expired code');
 
       // OTP verified - now sign in the user with their password
-      // We already validated their password earlier, so we can proceed
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -169,8 +168,10 @@ export default function AuthPage() {
       suppressRedirectRef.current = false;
 
       toast({
-        title: 'Verified!',
-        description: 'You are now logged in',
+        title: authMode === 'signup' ? '🎉 Account Created Successfully!' : 'Verified!',
+        description: authMode === 'signup'
+          ? 'Your account has been created and verified. Welcome aboard!'
+          : 'You are now logged in',
       });
       navigate('/');
     } catch (error: any) {
