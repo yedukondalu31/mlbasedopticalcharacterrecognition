@@ -244,7 +244,18 @@ export default function AuthPage() {
         // Sign out immediately - we'll sign back in after OTP verification
         await supabase.auth.signOut();
 
-        await sendOtpForVerification(email);
+        try {
+          await sendOtpForVerification(email);
+        } catch {
+          // OTP email failed (e.g. Resend sandbox limitation) — let user know
+          toast({
+            title: 'Could not send verification email',
+            description: 'Your credentials are correct but the verification email could not be sent. This may be a temporary issue — please try again later.',
+            variant: 'destructive',
+          });
+          suppressRedirectRef.current = false;
+          setAuthStep('credentials');
+        }
       }
     } catch (error: any) {
       // If we failed to start the OTP flow, re-enable normal redirects.
