@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -7,19 +7,39 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
-import { Mail, Loader2, KeyRound, Lock, ArrowLeft, ShieldCheck, CheckCircle2, PartyPopper } from 'lucide-react';
+import { Mail, Loader2, Lock, ArrowLeft, RefreshCw, ShieldCheck } from 'lucide-react';
 import { z } from 'zod';
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-  InputOTPSeparator,
-} from '@/components/ui/input-otp';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
 
-type AuthStep = 'credentials' | 'otp-verification' | 'forgot-password' | 'reset-password' | 'success';
+type AuthStep = 'credentials' | 'forgot-password' | 'reset-password';
+
+function generateCaptcha(): { question: string; answer: number } {
+  const ops = ['+', '-', '×'] as const;
+  const op = ops[Math.floor(Math.random() * ops.length)];
+  let a: number, b: number, answer: number;
+
+  switch (op) {
+    case '+':
+      a = Math.floor(Math.random() * 50) + 1;
+      b = Math.floor(Math.random() * 50) + 1;
+      answer = a + b;
+      break;
+    case '-':
+      a = Math.floor(Math.random() * 50) + 10;
+      b = Math.floor(Math.random() * a) + 1;
+      answer = a - b;
+      break;
+    case '×':
+      a = Math.floor(Math.random() * 12) + 1;
+      b = Math.floor(Math.random() * 12) + 1;
+      answer = a * b;
+      break;
+  }
+
+  return { question: `${a} ${op} ${b} = ?`, answer };
+}
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -27,18 +47,20 @@ export default function AuthPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [authStep, setAuthStep] = useState<AuthStep>('credentials');
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [otpCountdown, setOtpCountdown] = useState(60);
-  const [canResend, setCanResend] = useState(false);
 
-  // Prevent redirect-to-home while we're intentionally doing the custom OTP flow.
-  const suppressRedirectRef = useRef(false);
+  // Captcha state
+  const [captcha, setCaptcha] = useState(() => generateCaptcha());
+  const [captchaInput, setCaptchaInput] = useState('');
+
+  const refreshCaptcha = useCallback(() => {
+    setCaptcha(generateCaptcha());
+    setCaptchaInput('');
+  }, []);
 
   useEffect(() => {
-    // Check if this is a password reset callback
     const type = searchParams.get('type');
     if (type === 'recovery') {
       setAuthStep('reset-password');
@@ -46,7 +68,7 @@ export default function AuthPage() {
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session && authStep === 'credentials' && !suppressRedirectRef.current) {
+      if (session && authStep === 'credentials') {
         navigate('/');
       }
     });
@@ -57,34 +79,13 @@ export default function AuthPage() {
         return;
       }
 
-      if (session && authStep === 'credentials' && !suppressRedirectRef.current) {
+      if (session && authStep === 'credentials') {
         navigate('/');
       }
     });
 
     return () => subscription.unsubscribe();
   }, [navigate, authStep, searchParams]);
-
-  // OTP countdown timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    
-    if (authStep === 'otp-verification' && otpCountdown > 0) {
-      interval = setInterval(() => {
-        setOtpCountdown((prev) => {
-          if (prev <= 1) {
-            setCanResend(true);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [authStep, otpCountdown]);
 
   const validateEmail = (email: string): boolean => {
     const result = emailSchema.safeParse(email);
@@ -99,90 +100,18 @@ export default function AuthPage() {
     return true;
   };
 
-  const sendOtpForVerification = async (userEmail: string) => {
-    try {
-      // Call the custom send-otp backend function
-      const { data, error } = await supabase.functions.invoke('send-otp', {
-        body: {
-          email: userEmail,
-          action: 'send',
-        },
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      setAuthStep('otp-verification');
-      setOtpCountdown(60);
-      setCanResend(false);
+  const validateCaptcha = (): boolean => {
+    if (parseInt(captchaInput, 10) !== captcha.answer) {
       toast({
-        title: 'Verification Code Sent',
-        description: 'A 6-digit code has been sent to your email',
-      });
-    } catch (error: any) {
-      // If we failed to start the OTP step, re-enable normal redirects.
-      suppressRedirectRef.current = false;
-
-      toast({
-        title: 'Error sending verification code',
-        description: error.message || 'Failed to send verification code',
+        title: 'Incorrect CAPTCHA',
+        description: 'Please solve the math problem correctly',
         variant: 'destructive',
       });
-      throw error;
+      refreshCaptcha();
+      return false;
     }
+    return true;
   };
-
-  const handleVerifyOtp = async () => {
-    if (!otp || otp.length !== 6) {
-      toast({
-        title: 'Invalid Code',
-        description: 'Please enter the 6-digit code from your email',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // Verify the OTP with our custom edge function
-      const { data, error: invokeError } = await supabase.functions.invoke('send-otp', {
-        body: {
-          email,
-          action: 'verify',
-          code: otp,
-        },
-      });
-
-      if (invokeError) throw invokeError;
-      if (!data?.success) throw new Error(data?.error || 'Invalid or expired code');
-
-      // OTP verified - now sign in the user with their password
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (signInError) throw signInError;
-
-      // Allow normal redirects again.
-      suppressRedirectRef.current = false;
-
-      // Show success celebration screen before redirecting
-      setAuthStep('success');
-      setTimeout(() => {
-        navigate('/');
-      }, 2500);
-    } catch (error: any) {
-      toast({
-        title: 'Verification failed',
-        description: error.message || 'Invalid or expired code',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
 
   const handlePasswordAuth = async () => {
     if (!validateEmail(email)) return;
@@ -197,10 +126,9 @@ export default function AuthPage() {
       return;
     }
 
-    setLoading(true);
-    // Avoid redirecting to / when a temporary auth session is created.
-    suppressRedirectRef.current = true;
+    if (!validateCaptcha()) return;
 
+    setLoading(true);
     try {
       if (authMode === 'signup') {
         const { error } = await supabase.auth.signUp({
@@ -213,54 +141,21 @@ export default function AuthPage() {
 
         if (error) throw error;
 
-        // Ensure there's no active session before OTP verification.
-        await supabase.auth.signOut();
-
-        try {
-          await sendOtpForVerification(email);
-          toast({
-            title: 'Account created!',
-            description: 'Please verify with the 6-digit code sent to your email',
-          });
-        } catch {
-          // OTP failed but account was created — allow sign-in retry
-          toast({
-            title: 'Account created!',
-            description: 'Verification email could not be sent. Please sign in to retry.',
-          });
-          suppressRedirectRef.current = false;
-          setAuthMode('signin');
-          setAuthStep('credentials');
-        }
+        toast({
+          title: 'Account created!',
+          description: 'You are now signed in.',
+        });
+        navigate('/');
       } else {
-        // For sign-in, validate credentials first
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
         if (error) throw error;
-
-        // Sign out immediately - we'll sign back in after OTP verification
-        await supabase.auth.signOut();
-
-        try {
-          await sendOtpForVerification(email);
-        } catch {
-          // OTP email failed (e.g. Resend sandbox limitation) — let user know
-          toast({
-            title: 'Could not send verification email',
-            description: 'Your credentials are correct but the verification email could not be sent. This may be a temporary issue — please try again later.',
-            variant: 'destructive',
-          });
-          suppressRedirectRef.current = false;
-          setAuthStep('credentials');
-        }
+        navigate('/');
       }
     } catch (error: any) {
-      // If we failed to start the OTP flow, re-enable normal redirects.
-      suppressRedirectRef.current = false;
-
       let message = error.message;
       if (error.message?.includes('User already registered')) {
         message = 'This email is already registered. Please sign in instead.';
@@ -273,6 +168,7 @@ export default function AuthPage() {
         description: message,
         variant: 'destructive',
       });
+      refreshCaptcha();
     } finally {
       setLoading(false);
     }
@@ -336,8 +232,7 @@ export default function AuthPage() {
         title: 'Password updated!',
         description: 'Your password has been reset successfully',
       });
-      
-      // Sign out and redirect to login
+
       await supabase.auth.signOut();
       setAuthStep('credentials');
       setPassword('');
@@ -353,36 +248,44 @@ export default function AuthPage() {
     }
   };
 
-  const handleResendOtp = async () => {
-    setLoading(true);
-    try {
-      await sendOtpForVerification(email);
-      toast({
-        title: 'Code resent',
-        description: 'Check your email for the new verification code',
-      });
-    } catch (error) {
-      // Error already handled
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const resetToCredentials = () => {
-    suppressRedirectRef.current = false;
     setAuthStep('credentials');
-    setOtp('');
     setPassword('');
     setConfirmPassword('');
-    setOtpCountdown(60);
-    setCanResend(false);
+    refreshCaptcha();
   };
 
-  const formatCountdown = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  const CaptchaField = () => (
+    <div className="space-y-2">
+      <Label>Verify you're human</Label>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 flex items-center gap-2 rounded-md border border-input bg-muted/50 px-3 py-2">
+          <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
+          <span className="font-mono font-semibold text-sm text-foreground whitespace-nowrap">
+            {captcha.question}
+          </span>
+        </div>
+        <Input
+          type="number"
+          placeholder="Answer"
+          value={captchaInput}
+          onChange={(e) => setCaptchaInput(e.target.value)}
+          disabled={loading}
+          className="w-24 text-center font-mono"
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={refreshCaptcha}
+          className="shrink-0"
+          title="New question"
+        >
+          <RefreshCw className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-primary/5 to-background">
@@ -392,8 +295,6 @@ export default function AuthPage() {
             ML Answer Evaluator
           </h1>
           <p className="text-muted-foreground">
-            {authStep === 'success' && (authMode === 'signup' ? 'Welcome aboard!' : 'Welcome back!')}
-            {authStep === 'otp-verification' && 'Verify your identity'}
             {authStep === 'forgot-password' && 'Reset your password'}
             {authStep === 'reset-password' && 'Create new password'}
             {authStep === 'credentials' && 'Sign in to start grading'}
@@ -401,36 +302,7 @@ export default function AuthPage() {
         </div>
 
         <Card className="p-6 shadow-lg border-2">
-          {authStep === 'success' ? (
-            /* Success Celebration Step */
-            <div className="space-y-6 py-4 animate-fade-in">
-              <div className="text-center">
-                <div className="relative w-20 h-20 mx-auto mb-5">
-                  <div className="absolute inset-0 rounded-full bg-green-500/20 animate-[pulse_1.5s_ease-in-out_infinite]" />
-                  <div className="relative w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center animate-scale-in">
-                    {authMode === 'signup' ? (
-                      <PartyPopper className="h-10 w-10 text-green-600" />
-                    ) : (
-                      <CheckCircle2 className="h-10 w-10 text-green-600" />
-                    )}
-                  </div>
-                </div>
-                <h2 className="text-xl font-bold mb-2 text-foreground">
-                  {authMode === 'signup' ? '🎉 Account Created!' : '✅ Verified!'}
-                </h2>
-                <p className="text-muted-foreground text-sm">
-                  {authMode === 'signup'
-                    ? 'Your account has been created and verified successfully.'
-                    : 'Your identity has been verified successfully.'}
-                </p>
-              </div>
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Redirecting you to the dashboard...</span>
-              </div>
-            </div>
-          ) : authStep === 'reset-password' ? (
-            /* Reset Password Step */
+          {authStep === 'reset-password' ? (
             <div className="space-y-4">
               <div className="text-center mb-4">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
@@ -484,7 +356,6 @@ export default function AuthPage() {
               </Button>
             </div>
           ) : authStep === 'forgot-password' ? (
-            /* Forgot Password Step */
             <div className="space-y-4">
               <Button
                 variant="ghost"
@@ -532,105 +403,7 @@ export default function AuthPage() {
                 Send Reset Link
               </Button>
             </div>
-          ) : authStep === 'otp-verification' ? (
-            /* OTP Verification Step (2FA) */
-            <div className="space-y-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={resetToCredentials}
-                className="gap-1 -ml-2 mb-2"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
-
-              <div className="text-center mb-4">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-                  <ShieldCheck className="h-8 w-8 text-primary" />
-                </div>
-                <h2 className="text-lg font-semibold mb-1">Two-Factor Verification</h2>
-                <p className="text-sm text-muted-foreground">
-                  Enter the 6-digit code sent to
-                </p>
-                <p className="font-medium text-primary">{email}</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  The code expires in 60 seconds
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <Label className="text-center block">Enter Verification Code</Label>
-                <div className="flex justify-center">
-                  <InputOTP
-                    maxLength={6}
-                    value={otp}
-                    onChange={(value) => setOtp(value)}
-                    disabled={loading}
-                  >
-                    <InputOTPGroup>
-                      <InputOTPSlot index={0} />
-                      <InputOTPSlot index={1} />
-                      <InputOTPSlot index={2} />
-                    </InputOTPGroup>
-                    <InputOTPSeparator />
-                    <InputOTPGroup>
-                      <InputOTPSlot index={3} />
-                      <InputOTPSlot index={4} />
-                      <InputOTPSlot index={5} />
-                    </InputOTPGroup>
-                  </InputOTP>
-                </div>
-                
-                {/* Countdown Timer */}
-                <div className="text-center mt-3">
-                  {otpCountdown > 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Code expires in{' '}
-                      <span className={`font-mono font-semibold ${otpCountdown <= 10 ? 'text-destructive' : 'text-primary'}`}>
-                        {formatCountdown(otpCountdown)}
-                      </span>
-                    </p>
-                  ) : (
-                    <p className="text-sm text-destructive font-medium">
-                      Code expired. Please request a new one.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <Button
-                onClick={handleVerifyOtp}
-                disabled={loading || otp.length !== 6 || otpCountdown === 0}
-                className="w-full gap-2"
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ShieldCheck className="h-4 w-4" />
-                )}
-                Verify & Continue
-              </Button>
-
-              <Button
-                variant={canResend ? "default" : "ghost"}
-                size="sm"
-                onClick={handleResendOtp}
-                disabled={loading || !canResend}
-                className={`w-full text-sm ${canResend ? 'animate-pulse' : ''}`}
-              >
-                {canResend ? (
-                  <>
-                    <Mail className="h-4 w-4 mr-1" />
-                    Resend Code Now
-                  </>
-                ) : (
-                  `Resend code in ${formatCountdown(otpCountdown)}`
-                )}
-              </Button>
-            </div>
           ) : (
-            /* Credentials Step */
             <Tabs value={authMode} onValueChange={(v) => setAuthMode(v as 'signin' | 'signup')}>
               <TabsList className="grid w-full grid-cols-2 mb-4">
                 <TabsTrigger value="signin">Sign In</TabsTrigger>
@@ -672,9 +445,11 @@ export default function AuthPage() {
                   />
                 </div>
 
+                <CaptchaField />
+
                 <Button
                   onClick={handlePasswordAuth}
-                  disabled={loading || !email || !password}
+                  disabled={loading || !email || !password || !captchaInput}
                   className="w-full gap-2"
                 >
                   {loading ? (
@@ -684,11 +459,6 @@ export default function AuthPage() {
                   )}
                   Sign In
                 </Button>
-
-                <p className="text-xs text-center text-muted-foreground">
-                  <ShieldCheck className="inline h-3 w-3 mr-1" />
-                  You'll receive a verification code via email
-                </p>
               </TabsContent>
 
               <TabsContent value="signup" className="space-y-4">
@@ -719,9 +489,11 @@ export default function AuthPage() {
                   </p>
                 </div>
 
+                <CaptchaField />
+
                 <Button
                   onClick={handlePasswordAuth}
-                  disabled={loading || !email || !password}
+                  disabled={loading || !email || !password || !captchaInput}
                   className="w-full gap-2"
                 >
                   {loading ? (
@@ -731,11 +503,6 @@ export default function AuthPage() {
                   )}
                   Create Account
                 </Button>
-
-                <p className="text-xs text-center text-muted-foreground">
-                  <ShieldCheck className="inline h-3 w-3 mr-1" />
-                  You'll receive a verification code via email
-                </p>
               </TabsContent>
             </Tabs>
           )}
