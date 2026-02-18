@@ -152,7 +152,7 @@ export const formatEvaluationExport = async (
 
   // Summary Sheet
   const summaryData = [
-    { Field: 'Roll Number', Value: evaluationData.rollNumber || 'Not Detected' },
+    { Field: 'Roll No', Value: evaluationData.rollNumber || 'Not Detected' },
     { Field: 'Subject Code', Value: evaluationData.subjectCode || 'Not Detected' },
     { Field: 'Date & Time', Value: new Date().toLocaleString() },
     {
@@ -162,8 +162,9 @@ export const formatEvaluationExport = async (
         : 'Sequential',
     },
     { Field: '', Value: '' },
-    { Field: 'Score', Value: `${evaluationData.score}/${evaluationData.totalQuestions}` },
-    { Field: 'Accuracy', Value: `${evaluationData.accuracy.toFixed(2)}%` },
+    { Field: 'Correct Questions Count', Value: evaluationData.score },
+    { Field: 'Marks in Numbers', Value: `${evaluationData.score}/${evaluationData.totalQuestions}` },
+    { Field: 'Percentage of Score', Value: `${evaluationData.accuracy.toFixed(2)}%` },
     { Field: 'Confidence', Value: evaluationData.confidence?.toUpperCase() || 'N/A' },
     { Field: 'Image Quality', Value: evaluationData.imageQuality?.toUpperCase() || 'N/A' },
     { Field: 'Low Confidence Answers', Value: evaluationData.lowConfidenceCount || 0 },
@@ -508,20 +509,16 @@ export const formatBatchExport = async (
 
   // All Results Sheet
   const allResultsData = completedItems.map((item) => ({
-    'File Name': item.fileName,
-    'Roll Number': item.rollNumber || 'N/A',
-    'Subject Code': item.subjectCode || 'N/A',
-    Score: item.score || 0,
-    Total: item.totalQuestions || 0,
-    'Accuracy %': item.accuracy ? Number(item.accuracy).toFixed(2) : 'N/A',
+    'Roll No': item.rollNumber || 'N/A',
+    'Correct Questions Count': item.score || 0,
+    'Percentage of Score': item.accuracy ? `${Number(item.accuracy).toFixed(2)}%` : 'N/A',
+    'Marks in Numbers': `${item.score || 0}/${item.totalQuestions || 0}`,
   }));
   formatter.addSheet('All Results', allResultsData, [
-    { wch: 30 },
-    { wch: 15 },
-    { wch: 15 },
-    { wch: 8 },
-    { wch: 8 },
-    { wch: 12 },
+    { wch: 18 },
+    { wch: 25 },
+    { wch: 20 },
+    { wch: 18 },
   ]);
 
   // Subject-wise Sheets
@@ -538,16 +535,16 @@ export const formatBatchExport = async (
     .sort()
     .forEach((subjectCode) => {
       const sheetData = groupedBySubject[subjectCode].map((item) => ({
-        'REGD NO': item.rollNumber || 'N/A',
-        'File Name': item.fileName,
-        Score: `${item.score}/${item.totalQuestions}`,
-        Accuracy: `${item.accuracy?.toFixed(1)}%`,
+        'Roll No': item.rollNumber || 'N/A',
+        'Correct Questions Count': item.score || 0,
+        'Percentage of Score': `${item.accuracy?.toFixed(2)}%`,
+        'Marks in Numbers': `${item.score}/${item.totalQuestions}`,
       }));
       formatter.addSheet(subjectCode.substring(0, 31), sheetData, [
-        { wch: 15 },
-        { wch: 30 },
-        { wch: 10 },
-        { wch: 10 },
+        { wch: 18 },
+        { wch: 25 },
+        { wch: 20 },
+        { wch: 18 },
       ]);
     });
 
