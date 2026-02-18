@@ -510,11 +510,13 @@ export const formatBatchExport = async (
   // All Results Sheet
   const allResultsData = completedItems.map((item) => ({
     'Roll No': item.rollNumber || 'N/A',
+    'Total Questions': item.totalQuestions || 0,
     'Correct Questions Count': item.score || 0,
     'Percentage of Score': item.accuracy ? `${Number(item.accuracy).toFixed(2)}%` : 'N/A',
     'Marks in Numbers': `${item.score || 0}/${item.totalQuestions || 0}`,
   }));
   formatter.addSheet('All Results', allResultsData, [
+    { wch: 18 },
     { wch: 18 },
     { wch: 25 },
     { wch: 20 },
@@ -536,11 +538,13 @@ export const formatBatchExport = async (
     .forEach((subjectCode) => {
       const sheetData = groupedBySubject[subjectCode].map((item) => ({
         'Roll No': item.rollNumber || 'N/A',
+        'Total Questions': item.totalQuestions || 0,
         'Correct Questions Count': item.score || 0,
         'Percentage of Score': `${item.accuracy?.toFixed(2)}%`,
         'Marks in Numbers': `${item.score}/${item.totalQuestions}`,
       }));
       formatter.addSheet(subjectCode.substring(0, 31), sheetData, [
+        { wch: 18 },
         { wch: 18 },
         { wch: 25 },
         { wch: 20 },
