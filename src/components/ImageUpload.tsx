@@ -1,9 +1,10 @@
 import { useState, useRef } from "react";
 import * as React from "react";
-import { Upload, Image as ImageIcon, X, Camera } from "lucide-react";
+import { Upload, Image as ImageIcon, X, Camera, Crop } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import ImageCropper from "@/components/ImageCropper";
 
 interface ImageUploadProps {
   onImageUpload: (imageUrl: string) => void;
@@ -17,6 +18,7 @@ interface ImageUploadProps {
 const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode = false, appendMode = false, onAppendModeChange }: ImageUploadProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
+  const [cropImage, setCropImage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -173,16 +175,8 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
         try {
           const originalDataUrl = reader.result as string;
           
-          // 6. Compress and preprocess the image
-          toast({
-            title: "Processing image...",
-            description: "Optimizing and enhancing image quality",
-          });
-          
-          const processedDataUrl = await compressImage(originalDataUrl);
-          
-          // 7. Pass to parent component
-          onImageUpload(processedDataUrl);
+          // Show cropper instead of directly processing
+          setCropImage(originalDataUrl);
         } catch (error) {
           toast({
             title: "Processing failed",
@@ -312,6 +306,50 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
     onImageUpload("");
   };
 
+  const handleCropComplete = async (croppedDataUrl: string) => {
+    try {
+      toast({
+        title: "Processing image...",
+        description: "Optimizing and enhancing cropped image",
+      });
+      const processedDataUrl = await compressImage(croppedDataUrl);
+      setCropImage(null);
+      onImageUpload(processedDataUrl);
+    } catch (error) {
+      toast({
+        title: "Processing failed",
+        description: "Failed to process the cropped image.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCropSkip = async () => {
+    if (!cropImage) return;
+    try {
+      toast({
+        title: "Processing image...",
+        description: "Optimizing image quality",
+      });
+      const processedDataUrl = await compressImage(cropImage);
+      setCropImage(null);
+      onImageUpload(processedDataUrl);
+    } catch (error) {
+      toast({
+        title: "Processing failed",
+        description: "Failed to process the image.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEditCrop = () => {
+    if (currentImage) {
+      setCropImage(currentImage);
+      onImageUpload("");
+    }
+  };
+
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -375,23 +413,9 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
         
         const imageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
         
-        try {
-          // Process the captured photo
-          toast({
-            title: "Processing photo...",
-            description: "Enhancing image quality",
-          });
-          
-          const processedDataUrl = await compressImage(imageDataUrl);
-          onImageUpload(processedDataUrl);
-          stopCamera();
-        } catch (error) {
-          toast({
-            title: "Processing failed",
-            description: "Failed to process the captured photo. Please try again.",
-            variant: "destructive",
-          });
-        }
+        // Show cropper for captured photo
+        setCropImage(imageDataUrl);
+        stopCamera();
       }
     }
   };
@@ -431,6 +455,12 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
               </Button>
             </div>
           </div>
+        ) : cropImage ? (
+          <ImageCropper
+            imageSrc={cropImage}
+            onCropComplete={handleCropComplete}
+            onCancel={handleCropSkip}
+          />
         ) : !currentImage ? (
           <div
             onDrop={handleDrop}
@@ -499,7 +529,16 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
               alt="Uploaded answer sheet" 
               className="w-full h-auto max-h-[500px] object-contain"
             />
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <div className="absolute inset-0 bg-background/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+              <Button 
+                onClick={handleEditCrop}
+                variant="secondary"
+                size="lg"
+                className="shadow-lg"
+              >
+                <Crop className="mr-2 h-4 w-4" />
+                Crop Image
+              </Button>
               <Button 
                 onClick={handleRemove}
                 variant="destructive"
@@ -507,7 +546,7 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
                 className="shadow-lg"
               >
                 <X className="mr-2 h-4 w-4" />
-                Remove Image
+                Remove
               </Button>
             </div>
           </div>
