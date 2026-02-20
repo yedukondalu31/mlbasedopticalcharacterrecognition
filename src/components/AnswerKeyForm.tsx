@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Key, Play, Loader2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Key, Play, Loader2, GripVertical, ClipboardPaste, Grid3X3, List, ArrowUp, ArrowDown, Trash2, Plus } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import SavedAnswerKeySelector from "./SavedAnswerKeySelector";
 
@@ -16,6 +17,8 @@ interface AnswerKeyFormProps {
   initialDetectRollNumber?: boolean;
   initialDetectSubjectCode?: boolean;
 }
+
+type EntryMode = "individual" | "bulk";
 
 const AnswerKeyForm = ({ 
   onSubmit, 
@@ -33,8 +36,11 @@ const AnswerKeyForm = ({
   const [columns, setColumns] = useState(initialGridConfig?.columns ?? 4);
   const [numQuestions, setNumQuestions] = useState(initialAnswers?.length ?? 10);
   const [answers, setAnswers] = useState<string[]>(initialAnswers ?? Array(10).fill(''));
+  const [entryMode, setEntryMode] = useState<EntryMode>("individual");
+  const [bulkText, setBulkText] = useState("");
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [showGridPreview, setShowGridPreview] = useState(false);
 
-  // Load saved key handler
   const handleLoadKey = (
     loadedAnswers: string[],
     gridConfig?: { rows: number; columns: number },
@@ -45,6 +51,7 @@ const AnswerKeyForm = ({
     setNumQuestions(loadedAnswers.length);
     setDetectRollNumber(loadedDetectRollNumber ?? true);
     setDetectSubjectCode(loadedDetectSubjectCode ?? true);
+    setBulkText(loadedAnswers.join(', '));
     
     if (gridConfig) {
       setGridMode(true);
@@ -57,15 +64,14 @@ const AnswerKeyForm = ({
 
   const handleNumQuestionsChange = (value: string) => {
     const num = parseInt(value) || 0;
-    // Allow 0 to 200 questions
     if (num >= 0 && num <= 200) {
       setNumQuestions(num);
-      setAnswers(Array(num).fill(''));
+      const newAnswers = Array(num).fill('').map((_, i) => answers[i] || '');
+      setAnswers(newAnswers);
     }
   };
 
   const handleGridDimensionChange = (newRows: number, newCols: number) => {
-    // Allow any non-negative values including 0
     const safeRows = Math.max(0, newRows);
     const safeCols = Math.max(0, newCols);
     const totalQuestions = safeRows * safeCols;
@@ -73,7 +79,8 @@ const AnswerKeyForm = ({
     setRows(safeRows);
     setColumns(safeCols);
     setNumQuestions(totalQuestions);
-    setAnswers(Array(Math.max(0, totalQuestions)).fill(''));
+    const newAnswers = Array(Math.max(0, totalQuestions)).fill('').map((_, i) => answers[i] || '');
+    setAnswers(newAnswers);
   };
 
   const handleAnswerChange = (index: number, value: string) => {
@@ -83,6 +90,73 @@ const AnswerKeyForm = ({
       newAnswers[index] = upperValue;
       setAnswers(newAnswers);
     }
+  };
+
+  // Bulk entry
+  const handleBulkApply = () => {
+    const parsed = bulkText
+      .toUpperCase()
+      .split(/[\s,;]+/)
+      .map(s => s.trim())
+      .filter(s => /^[A-E]$/.test(s));
+
+    if (parsed.length === 0) {
+      toast({
+        title: "No valid answers found",
+        description: "Enter answers as A, B, C, D, or E separated by commas or spaces",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setAnswers(parsed);
+    setNumQuestions(parsed.length);
+    if (!gridMode) {
+      // keep grid mode off
+    }
+    toast({
+      title: `${parsed.length} answers applied`,
+      description: "Bulk entry applied successfully",
+    });
+    setEntryMode("individual");
+  };
+
+  // Reorder
+  const moveQuestion = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= answers.length) return;
+    const newAnswers = [...answers];
+    const [moved] = newAnswers.splice(fromIndex, 1);
+    newAnswers.splice(toIndex, 0, moved);
+    setAnswers(newAnswers);
+  };
+
+  const addQuestion = () => {
+    if (answers.length >= 200) return;
+    setAnswers([...answers, '']);
+    setNumQuestions(answers.length + 1);
+  };
+
+  const removeQuestion = (index: number) => {
+    if (answers.length <= 1) return;
+    const newAnswers = answers.filter((_, i) => i !== index);
+    setAnswers(newAnswers);
+    setNumQuestions(newAnswers.length);
+  };
+
+  // Drag and drop
+  const handleDragStart = (index: number) => {
+    setDragIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === index) return;
+    moveQuestion(dragIndex, index);
+    setDragIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDragIndex(null);
   };
 
   const handleSubmit = () => {
@@ -118,6 +192,8 @@ const AnswerKeyForm = ({
     });
   };
 
+  const filledCount = answers.filter(a => a !== '').length;
+
   return (
     <section className="w-full">
       <div className="mb-4 md:mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -139,7 +215,7 @@ const AnswerKeyForm = ({
 
       <Card className="p-4 md:p-6 bg-gradient-card border-2 transition-all hover:shadow-lg">
         <div className="space-y-4 md:space-y-6">
-          {/* Roll Number Detection */}
+          {/* Detection toggles */}
           <div className="flex items-center gap-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
             <div className="flex items-center gap-2 flex-1">
               <input
@@ -158,7 +234,6 @@ const AnswerKeyForm = ({
             </div>
           </div>
 
-          {/* Subject Code Detection */}
           <div className="flex items-center gap-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
             <div className="flex items-center gap-2 flex-1">
               <input
@@ -177,6 +252,7 @@ const AnswerKeyForm = ({
             </div>
           </div>
 
+          {/* Grid / Question Config */}
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
               <Label htmlFor="grid-mode" className="cursor-pointer">Grid Mode</Label>
@@ -245,76 +321,251 @@ const AnswerKeyForm = ({
                 )}
               </div>
             )}
-            
-            <div className="grid grid-cols-5 gap-2 pt-4 md:pt-6">
-              <Button variant="outline" size="sm" onClick={() => quickFill('A')} className="min-h-[40px]">Fill A</Button>
-              <Button variant="outline" size="sm" onClick={() => quickFill('B')} className="min-h-[40px]">Fill B</Button>
-              <Button variant="outline" size="sm" onClick={() => quickFill('C')} className="min-h-[40px]">Fill C</Button>
-              <Button variant="outline" size="sm" onClick={() => quickFill('D')} className="min-h-[40px]">Fill D</Button>
-              <Button variant="outline" size="sm" onClick={() => quickFill('E')} className="min-h-[40px]">Fill E</Button>
+          </div>
+
+          {/* Entry Mode Toggle + Quick Fill */}
+          <div className="flex flex-wrap items-center gap-2 border-t pt-4">
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              <Button
+                variant={entryMode === "individual" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setEntryMode("individual")}
+                className="rounded-none gap-1.5"
+              >
+                <List className="h-3.5 w-3.5" />
+                Individual
+              </Button>
+              <Button
+                variant={entryMode === "bulk" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setEntryMode("bulk")}
+                className="rounded-none gap-1.5"
+              >
+                <ClipboardPaste className="h-3.5 w-3.5" />
+                Bulk Paste
+              </Button>
+            </div>
+
+            {gridMode && numQuestions > 0 && (
+              <Button
+                variant={showGridPreview ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowGridPreview(!showGridPreview)}
+                className="gap-1.5"
+              >
+                <Grid3X3 className="h-3.5 w-3.5" />
+                Grid Preview
+              </Button>
+            )}
+
+            <div className="ml-auto flex gap-1">
+              {['A', 'B', 'C', 'D', 'E'].map(opt => (
+                <Button key={opt} variant="outline" size="sm" onClick={() => quickFill(opt)} className="min-h-[36px] w-10">
+                  {opt}
+                </Button>
+              ))}
             </div>
           </div>
 
-          <div className="border-t pt-4 md:pt-6">
-            <Label className="text-sm md:text-base font-semibold mb-2 md:mb-3 block">
-              Answer Key (A, B, C, D, or E) {gridMode && `- ${rows}×${columns}`}
-            </Label>
-            {numQuestions === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <p className="text-lg mb-2">No questions configured</p>
-                <p className="text-sm">
-                  {gridMode 
-                    ? "Set rows and columns above to create answer fields"
-                    : "Set number of questions above to create answer fields"
-                  }
-                </p>
+          {/* Progress indicator */}
+          {numQuestions > 0 && (
+            <div className="flex items-center gap-3 text-sm">
+              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-300"
+                  style={{ width: `${(filledCount / numQuestions) * 100}%` }}
+                />
               </div>
-            ) : gridMode ? (
-              <div className="space-y-2">
-                {Array.from({ length: rows }).map((_, rowIndex) => (
-                  <div key={rowIndex} className="flex gap-2 justify-center">
-                    {Array.from({ length: columns }).map((_, colIndex) => {
-                      const index = rowIndex * columns + colIndex;
-                      if (index >= numQuestions) return null;
-                      return (
-                        <div key={index} className="space-y-1">
-                          <Label htmlFor={`answer-${index}`} className="text-xs text-muted-foreground block text-center">
-                            Q{index + 1}
-                          </Label>
-                          <Input
-                            id={`answer-${index}`}
-                            value={answers[index]}
-                            onChange={(e) => handleAnswerChange(index, e.target.value)}
-                            maxLength={1}
-                            className="text-center font-bold text-lg uppercase h-12 w-12"
-                            placeholder="-"
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
+              <span className="text-muted-foreground font-medium whitespace-nowrap">
+                {filledCount}/{numQuestions} filled
+              </span>
+            </div>
+          )}
+
+          {/* Bulk Entry Mode */}
+          {entryMode === "bulk" && (
+            <Card className="p-4 bg-muted/30 border-dashed border-2">
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-sm font-semibold">Paste Answers</Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Enter answers separated by commas, spaces, or new lines. Example: <code className="bg-muted px-1 rounded">A, B, C, D, A, B, C, D, A, B</code>
+                  </p>
+                </div>
+                <Textarea
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  placeholder="A, B, C, D, A, B, C, D, A, B..."
+                  className="font-mono text-sm min-h-[100px]"
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    {bulkText.toUpperCase().split(/[\s,;]+/).filter(s => /^[A-E]$/.test(s.trim())).length} valid answers detected
+                  </span>
+                  <Button onClick={handleBulkApply} size="sm" className="gap-1.5">
+                    <ClipboardPaste className="h-3.5 w-3.5" />
+                    Apply Answers
+                  </Button>
+                </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2 md:gap-3">
-                {answers.map((answer, index) => (
-                  <div key={index} className="space-y-1">
-                    <Label htmlFor={`answer-${index}`} className="text-[10px] md:text-xs text-muted-foreground text-center block">
-                      {index + 1}
-                    </Label>
-                    <Input
-                      id={`answer-${index}`}
-                      value={answer}
-                      onChange={(e) => handleAnswerChange(index, e.target.value)}
-                      maxLength={1}
-                      className="text-center font-bold text-base md:text-lg uppercase h-10 md:h-12 touch-manipulation"
-                      placeholder="-"
-                    />
-                  </div>
-                ))}
+            </Card>
+          )}
+
+          {/* Individual Entry Mode */}
+          {entryMode === "individual" && (
+            <div>
+              <Label className="text-sm md:text-base font-semibold mb-2 md:mb-3 block">
+                Answer Key (A–E) {gridMode && `— ${rows}×${columns}`}
+              </Label>
+              {numQuestions === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="text-lg mb-2">No questions configured</p>
+                  <p className="text-sm">
+                    {gridMode 
+                      ? "Set rows and columns above to create answer fields"
+                      : "Set number of questions above to create answer fields"
+                    }
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-[400px] overflow-y-auto pr-1">
+                  {answers.map((answer, index) => (
+                    <div
+                      key={index}
+                      draggable
+                      onDragStart={() => handleDragStart(index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDragEnd={handleDragEnd}
+                      className={`flex items-center gap-2 p-1.5 rounded-lg border transition-all group ${
+                        dragIndex === index
+                          ? 'border-primary bg-primary/5 shadow-sm'
+                          : 'border-transparent hover:border-border hover:bg-muted/30'
+                      }`}
+                    >
+                      <GripVertical className="h-4 w-4 text-muted-foreground/50 cursor-grab active:cursor-grabbing shrink-0" />
+                      <span className="text-xs text-muted-foreground font-mono w-8 text-right shrink-0">
+                        Q{index + 1}
+                      </span>
+                      
+                      {/* Option buttons */}
+                      <div className="flex gap-1">
+                        {['A', 'B', 'C', 'D', 'E'].map(opt => (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => handleAnswerChange(index, opt)}
+                            className={`w-9 h-9 rounded-md text-sm font-bold transition-all border ${
+                              answer === opt
+                                ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                                : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
+                            }`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Reorder + Remove */}
+                      <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => moveQuestion(index, index - 1)}
+                          disabled={index === 0}
+                        >
+                          <ArrowUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => moveQuestion(index, index + 1)}
+                          disabled={index === answers.length - 1}
+                        >
+                          <ArrowDown className="h-3 w-3" />
+                        </Button>
+                        {!gridMode && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            onClick={() => removeQuestion(index)}
+                            disabled={answers.length <= 1}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add question button (non-grid mode only) */}
+              {!gridMode && numQuestions > 0 && numQuestions < 200 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={addQuestion}
+                  className="mt-3 gap-1.5 w-full border-dashed"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Question
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Visual Grid Preview */}
+          {showGridPreview && gridMode && numQuestions > 0 && (
+            <Card className="p-4 bg-muted/20 border-2 border-dashed">
+              <div className="flex items-center gap-2 mb-3">
+                <Grid3X3 className="h-4 w-4 text-primary" />
+                <Label className="font-semibold text-sm">Grid Preview ({rows}×{columns})</Label>
               </div>
-            )}
-          </div>
+              <div className="overflow-x-auto">
+                <table className="border-collapse mx-auto">
+                  <thead>
+                    <tr>
+                      <th className="p-1 text-xs text-muted-foreground"></th>
+                      {Array.from({ length: columns }).map((_, c) => (
+                        <th key={c} className="p-1 text-xs text-muted-foreground font-medium text-center min-w-[40px]">
+                          C{c + 1}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: rows }).map((_, r) => (
+                      <tr key={r}>
+                        <td className="p-1 text-xs text-muted-foreground font-medium pr-2">R{r + 1}</td>
+                        {Array.from({ length: columns }).map((_, c) => {
+                          const idx = r * columns + c;
+                          const val = answers[idx] || '';
+                          const filled = val !== '';
+                          return (
+                            <td key={c} className="p-0.5">
+                              <div className={`w-10 h-10 rounded-md border-2 flex items-center justify-center text-sm font-bold transition-colors ${
+                                filled
+                                  ? 'bg-primary/10 border-primary/40 text-primary'
+                                  : 'bg-background border-border text-muted-foreground/30'
+                              }`}>
+                                {filled ? val : `${idx + 1}`}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                Questions are numbered left-to-right, top-to-bottom
+              </p>
+            </Card>
+          )}
 
           <div className="flex justify-center pt-4">
             <Button
