@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Session } from "@supabase/supabase-js";
+import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect } from "react";
 import { SavedAnswerKey, useSavedAnswerKeys } from "@/hooks/useSavedAnswerKeys";
@@ -57,6 +58,11 @@ import {
   Filter,
   X,
   ArrowUpDown,
+  ClipboardPaste,
+  List,
+  ArrowUp,
+  ArrowDown,
+  GripVertical,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -84,7 +90,9 @@ const AnswerKeys = () => {
   const [editDetectRollNumber, setEditDetectRollNumber] = useState(true);
   const [editDetectSubjectCode, setEditDetectSubjectCode] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-
+  const [editEntryMode, setEditEntryMode] = useState<"individual" | "bulk">("individual");
+  const [editBulkText, setEditBulkText] = useState("");
+  const [editDragIndex, setEditDragIndex] = useState<number | null>(null);
   // Delete confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [keyToDelete, setKeyToDelete] = useState<SavedAnswerKey | null>(null);
@@ -171,6 +179,9 @@ const AnswerKeys = () => {
     setEditAnswers([...key.answers]);
     setEditDetectRollNumber(key.detect_roll_number ?? true);
     setEditDetectSubjectCode(key.detect_subject_code ?? true);
+    setEditEntryMode("individual");
+    setEditBulkText(key.answers.join(', '));
+    setEditDragIndex(null);
     setEditDialogOpen(true);
   };
 
@@ -514,28 +525,122 @@ const AnswerKeys = () => {
               </div>
             </div>
 
-            {/* Answer Grid */}
-            <div className="space-y-2">
-              <Label>Answers ({editAnswers.length} questions)</Label>
-              <Card className="p-3 bg-muted/30">
-                <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 max-h-64 overflow-y-auto">
-                  {editAnswers.map((answer, index) => (
-                    <div key={index} className="flex flex-col items-center">
-                      <span className="text-xs text-muted-foreground mb-1">{index + 1}</span>
-                      <Input
-                        value={answer}
-                        onChange={(e) => handleEditAnswerChange(index, e.target.value)}
-                        maxLength={1}
-                        className="w-10 h-10 text-center text-lg font-bold p-0"
-                      />
-                    </div>
-                  ))}
+            {/* Entry mode toggle */}
+            <div className="flex rounded-lg border border-border overflow-hidden w-fit">
+              <Button
+                variant={editEntryMode === "individual" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setEditEntryMode("individual")}
+                className="rounded-none gap-1.5"
+              >
+                <List className="h-3.5 w-3.5" />
+                Individual
+              </Button>
+              <Button
+                variant={editEntryMode === "bulk" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setEditEntryMode("bulk")}
+                className="rounded-none gap-1.5"
+              >
+                <ClipboardPaste className="h-3.5 w-3.5" />
+                Bulk Paste
+              </Button>
+            </div>
+
+            {/* Bulk entry */}
+            {editEntryMode === "bulk" && (
+              <Card className="p-4 bg-muted/30 border-dashed border-2">
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Enter answers separated by commas, spaces, or new lines (A–E only)
+                  </p>
+                  <Textarea
+                    value={editBulkText}
+                    onChange={(e) => setEditBulkText(e.target.value)}
+                    placeholder="A, B, C, D, A, B..."
+                    className="font-mono text-sm min-h-[80px]"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">
+                      {editBulkText.toUpperCase().split(/[\s,;]+/).filter(s => /^[A-E]$/.test(s.trim())).length} valid answers
+                    </span>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        const parsed = editBulkText.toUpperCase().split(/[\s,;]+/).map(s => s.trim()).filter(s => /^[A-E]$/.test(s));
+                        if (parsed.length > 0) {
+                          setEditAnswers(parsed);
+                          setEditEntryMode("individual");
+                          toast({ title: `${parsed.length} answers applied` });
+                        }
+                      }}
+                    >
+                      Apply
+                    </Button>
+                  </div>
                 </div>
               </Card>
-              <p className="text-xs text-muted-foreground">
-                Valid answers: A, B, C, D, E (case insensitive)
-              </p>
-            </div>
+            )}
+
+            {/* Individual answer editing */}
+            {editEntryMode === "individual" && (
+              <div className="space-y-2">
+                <Label>Answers ({editAnswers.length} questions)</Label>
+                <Card className="p-3 bg-muted/30">
+                  <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                    {editAnswers.map((answer, index) => (
+                      <div
+                        key={index}
+                        draggable
+                        onDragStart={() => setEditDragIndex(index)}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (editDragIndex === null || editDragIndex === index) return;
+                          const newAnswers = [...editAnswers];
+                          const [moved] = newAnswers.splice(editDragIndex, 1);
+                          newAnswers.splice(index, 0, moved);
+                          setEditAnswers(newAnswers);
+                          setEditDragIndex(index);
+                        }}
+                        onDragEnd={() => setEditDragIndex(null)}
+                        className={`flex items-center gap-2 p-1 rounded-md group ${
+                          editDragIndex === index ? 'bg-primary/5 border border-primary/30' : 'hover:bg-muted/50'
+                        }`}
+                      >
+                        <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab shrink-0" />
+                        <span className="text-xs text-muted-foreground font-mono w-6 text-right shrink-0">{index + 1}</span>
+                        <div className="flex gap-0.5">
+                          {['A', 'B', 'C', 'D', 'E'].map(opt => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => handleEditAnswerChange(index, opt)}
+                              className={`w-7 h-7 rounded text-xs font-bold border transition-all ${
+                                answer === opt
+                                  ? 'bg-primary text-primary-foreground border-primary'
+                                  : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="ml-auto flex gap-0.5 opacity-0 group-hover:opacity-100">
+                          <Button variant="ghost" size="icon" className="h-6 w-6"
+                            onClick={() => { const a = [...editAnswers]; const [m] = a.splice(index, 1); a.splice(Math.max(0, index - 1), 0, m); setEditAnswers(a); }}
+                            disabled={index === 0}
+                          ><ArrowUp className="h-3 w-3" /></Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6"
+                            onClick={() => { const a = [...editAnswers]; const [m] = a.splice(index, 1); a.splice(Math.min(a.length, index + 1), 0, m); setEditAnswers(a); }}
+                            disabled={index === editAnswers.length - 1}
+                          ><ArrowDown className="h-3 w-3" /></Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </div>
+            )}
 
             {editingKey?.grid_rows && editingKey?.grid_columns && (
               <Card className="p-3 bg-muted/50">
