@@ -34,8 +34,9 @@ const AnswerKeyForm = ({
   const [detectSubjectCode, setDetectSubjectCode] = useState(initialDetectSubjectCode ?? true);
   const [rows, setRows] = useState(initialGridConfig?.rows ?? 5);
   const [columns, setColumns] = useState(initialGridConfig?.columns ?? 4);
-  const [numQuestions, setNumQuestions] = useState(initialAnswers?.length ?? 10);
-  const [answers, setAnswers] = useState<string[]>(initialAnswers ?? Array(10).fill(''));
+  const defaultTotal = initialGridConfig ? initialGridConfig.rows * initialGridConfig.columns : (initialAnswers?.length ?? 20);
+  const [numQuestions, setNumQuestions] = useState(defaultTotal);
+  const [answers, setAnswers] = useState<string[]>(initialAnswers ?? Array(defaultTotal).fill(''));
   const [entryMode, setEntryMode] = useState<EntryMode>("individual");
   const [bulkText, setBulkText] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -546,13 +547,23 @@ const AnswerKeyForm = ({
                           const filled = val !== '';
                           return (
                             <td key={c} className="p-0.5">
-                              <div className={`w-10 h-10 rounded-md border-2 flex items-center justify-center text-sm font-bold transition-colors ${
-                                filled
-                                  ? 'bg-primary/10 border-primary/40 text-primary'
-                                  : 'bg-background border-border text-muted-foreground/30'
-                              }`}>
+              <button
+                                type="button"
+                                onClick={() => {
+                                  const options = ['A', 'B', 'C', 'D', 'E'];
+                                  const currentIdx = options.indexOf(val);
+                                  const nextVal = options[(currentIdx + 1) % options.length];
+                                  handleAnswerChange(idx, nextVal);
+                                }}
+                                className={`w-10 h-10 rounded-md border-2 flex items-center justify-center text-sm font-bold transition-colors cursor-pointer hover:border-primary/60 ${
+                                  filled
+                                    ? 'bg-primary/10 border-primary/40 text-primary'
+                                    : 'bg-background border-border text-muted-foreground/30 hover:bg-muted/50'
+                                }`}
+                                title={`Click to set answer for Q${idx + 1}`}
+                              >
                                 {filled ? val : `${idx + 1}`}
-                              </div>
+                              </button>
                             </td>
                           );
                         })}
