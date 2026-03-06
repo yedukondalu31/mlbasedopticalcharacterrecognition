@@ -38,15 +38,34 @@ export class ExcelFormatter {
     columnWidths?: { wch: number }[],
     includeHeader: boolean = true
   ) {
-    const formattedData = this.addHeaderInfo(data, sheetName);
     const ws = this.wb.addWorksheet(sheetName.substring(0, 31));
 
-    if (formattedData.length === 0) return;
+    if (data.length === 0) return;
 
-    // Get headers from first data row
-    const headers = Object.keys(formattedData[0]);
+    // Add school header info rows BEFORE the table
+    let headerRowsAdded = 0;
+    if (this.settings.includeHeader) {
+      if (this.settings.schoolName) {
+        const r = ws.addRow([this.settings.schoolName]);
+        r.getCell(1).font = { name: this.settings.fontFamily, size: 14, bold: true };
+        headerRowsAdded++;
+        ws.addRow([]);
+        headerRowsAdded++;
+      }
+      const r2 = ws.addRow([sheetName]);
+      r2.getCell(1).font = { name: this.settings.fontFamily, size: 11, italic: true };
+      headerRowsAdded++;
+      const r3 = ws.addRow([`Generated: ${new Date().toLocaleString()}`]);
+      r3.getCell(1).font = { name: this.settings.fontFamily, size: 9, color: { argb: 'FF666666' } };
+      headerRowsAdded++;
+      ws.addRow([]);
+      headerRowsAdded++;
+    }
+
+    // Get headers from ACTUAL data (not prepended header rows)
+    const headers = Object.keys(data[0]);
     
-    // Add header row
+    // Add column header row
     const headerRow = ws.addRow(headers);
     
     // Style header row
@@ -73,9 +92,18 @@ export class ExcelFormatter {
     });
 
     // Add data rows
-    formattedData.forEach((row) => {
+    data.forEach((row) => {
       const values = headers.map((header) => row[header]);
-      ws.addRow(values);
+      const dataRow = ws.addRow(values);
+      dataRow.eachCell((cell) => {
+        cell.font = { name: this.settings.fontFamily, size: 11 };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+          bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+          left: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+          right: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+        };
+      });
     });
 
     // Set column widths
@@ -99,7 +127,6 @@ export class ExcelFormatter {
       };
       footerCell.alignment = { horizontal: 'center' };
       
-      // Merge footer cells
       if (headers.length > 1) {
         ws.mergeCells(footerRow.number, 1, footerRow.number, headers.length);
       }
@@ -468,195 +495,220 @@ export const formatBatchExport = async (
   answerKey?: string[]
 ): Promise<string> => {
   const formatter = new ExcelFormatter(settings);
+  const wb = formatter.getWorkbook();
   const completedItems = items.filter((item) => item.status === 'completed');
-  const errorCount = items.filter((item) => item.status === 'error').length;
+  const errorItems = items.filter((item) => item.status === 'error');
 
-  // Batch Summary Sheet
-  const summaryData = [
-    { Metric: 'Batch Date', Value: new Date().toLocaleString() },
-    { Metric: 'Total Sheets Processed', Value: items.length },
-    { Metric: 'Successful', Value: completedItems.length },
-    { Metric: 'Failed', Value: errorCount },
-    { Metric: '', Value: '' },
-    {
-      Metric: 'Average Score',
-      Value:
-        completedItems.length > 0
-          ? `${(
-              completedItems.reduce((sum, item) => sum + (item.score || 0), 0) / completedItems.length
-            ).toFixed(2)}/${completedItems[0]?.totalQuestions || 'N/A'}`
-          : 'N/A',
-    },
-    {
-      Metric: 'Average Accuracy',
-      Value:
-        completedItems.length > 0
-          ? `${(
-              completedItems.reduce((sum, item) => sum + (item.accuracy || 0), 0) / completedItems.length
-            ).toFixed(2)}%`
-          : 'N/A',
-    },
-    {
-      Metric: 'Unique Students',
-      Value: new Set(completedItems.map((item) => item.rollNumber).filter(Boolean)).size,
-    },
-    {
-      Metric: 'Unique Subjects',
-      Value: new Set(completedItems.map((item) => item.subjectCode).filter(Boolean)).size,
-    },
-  ];
-  formatter.addSheet('Batch Summary', summaryData, [{ wch: 25 }, { wch: 30 }]);
+  // ===== SINGLE CONSOLIDATED SHEET =====
+  const ws = wb.addWorksheet('Results');
 
-  // All Results Sheet
-  const allResultsData = completedItems.map((item) => ({
-    'Roll No': item.rollNumber || 'N/A',
-    'Total Questions': item.totalQuestions || 0,
-    'Correct Questions Count': item.score || 0,
-    'Percentage of Score': item.accuracy ? `${Number(item.accuracy).toFixed(2)}%` : 'N/A',
-    'Marks in Numbers': `${item.score || 0}/${item.totalQuestions || 0}`,
-  }));
-  formatter.addSheet('All Results', allResultsData, [
-    { wch: 18 },
-    { wch: 18 },
-    { wch: 25 },
-    { wch: 20 },
-    { wch: 18 },
-  ]);
+  let currentRow = 1;
+  const maxCols = 7;
 
-  // Subject-wise Sheets
-  const groupedBySubject: { [key: string]: any[] } = {};
-  completedItems.forEach((item) => {
-    const subjectCode = item.subjectCode || 'NO_SUBJECT';
-    if (!groupedBySubject[subjectCode]) {
-      groupedBySubject[subjectCode] = [];
-    }
-    groupedBySubject[subjectCode].push(item);
-  });
+  const addMergedTitle = (text: string, bgColor: string, fontColor = 'FFFFFFFF', fontSize = 14) => {
+    const row = ws.getRow(currentRow);
+    row.getCell(1).value = text;
+    row.getCell(1).font = { name: settings.fontFamily, size: fontSize, bold: true, color: { argb: fontColor } };
+    row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+    row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.mergeCells(currentRow, 1, currentRow, maxCols);
+    row.height = fontSize === 14 ? 28 : 22;
+    currentRow++;
+  };
 
-  Object.keys(groupedBySubject)
-    .sort()
-    .forEach((subjectCode) => {
-      const sheetData = groupedBySubject[subjectCode].map((item) => ({
-        'Roll No': item.rollNumber || 'N/A',
-        'Total Questions': item.totalQuestions || 0,
-        'Correct Questions Count': item.score || 0,
-        'Percentage of Score': `${item.accuracy?.toFixed(2)}%`,
-        'Marks in Numbers': `${item.score}/${item.totalQuestions}`,
-      }));
-      formatter.addSheet(subjectCode.substring(0, 31), sheetData, [
-        { wch: 18 },
-        { wch: 18 },
-        { wch: 25 },
-        { wch: 20 },
-        { wch: 18 },
-      ]);
+  const addKeyValue = (key: string, value: any) => {
+    const row = ws.getRow(currentRow);
+    row.getCell(1).value = key;
+    row.getCell(1).font = { name: settings.fontFamily, size: 11, bold: true };
+    row.getCell(2).value = value;
+    row.getCell(2).font = { name: settings.fontFamily, size: 11 };
+    currentRow++;
+  };
+
+  const addTableHeaders = (headers: string[], widths?: number[]) => {
+    const headerColor = formatter['hexToArgb'](settings.headerColor);
+    const row = ws.getRow(currentRow);
+    headers.forEach((h, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = h;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: headerColor } };
+      cell.font = { name: settings.fontFamily, size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF000000' } },
+        bottom: { style: 'thin', color: { argb: 'FF000000' } },
+        left: { style: 'thin', color: { argb: 'FF000000' } },
+        right: { style: 'thin', color: { argb: 'FF000000' } },
+      };
     });
+    currentRow++;
+  };
 
-  // Answer Key Sheet
-  if (answerKey && answerKey.length > 0) {
-    const answerKeyData: any[] = [];
-    const keyRow: any = { Info: 'Answer Key Used' };
-    answerKey.forEach((ans, idx) => {
-      keyRow[`Q${idx + 1}`] = ans;
+  const addDataRow = (values: any[]) => {
+    const row = ws.getRow(currentRow);
+    values.forEach((v, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = v;
+      cell.font = { name: settings.fontFamily, size: 11 };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+        bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+        left: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+        right: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+      };
     });
-    answerKeyData.push(keyRow);
+    currentRow++;
+  };
 
-    const akColWidths = [{ wch: 15 }];
-    for (let i = 0; i < answerKey.length; i++) {
-      akColWidths.push({ wch: 5 });
-    }
-    formatter.addSheet('Answer Key', answerKeyData, akColWidths);
+  const addBlankRow = () => { currentRow++; };
+
+  // Set column widths
+  [18, 18, 25, 20, 18, 15, 30].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  // ── SECTION 1: School Header ──
+  if (settings.includeHeader && settings.schoolName) {
+    addMergedTitle(settings.schoolName, formatter['hexToArgb'](settings.headerColor), 'FFFFFFFF', 16);
   }
+  addMergedTitle('Batch Evaluation Report', 'FF2D3748', 'FFFFFFFF', 14);
+  addMergedTitle(`Generated: ${new Date().toLocaleString()}`, 'FFF7FAFC', 'FF4A5568', 10);
+  addBlankRow();
 
-  // Failed Sheets Log
-  if (errorCount > 0) {
-    const failedItems = items.filter((item) => item.status === 'error');
-    const failedData = failedItems.map((item) => ({
-      'File Name': item.fileName,
-      Error: item.error || 'Unknown error',
-    }));
-    formatter.addSheet('Failed Sheets', failedData, [{ wch: 30 }, { wch: 50 }]);
-  }
-
-  // Batch Performance Analytics
+  // ── SECTION 2: Batch Summary ──
+  addMergedTitle('📊 BATCH SUMMARY', 'FF3182CE', 'FFFFFFFF', 12);
+  addKeyValue('Total Sheets Processed', items.length);
+  addKeyValue('Successful', completedItems.length);
+  addKeyValue('Failed', errorItems.length);
+  
   if (completedItems.length > 0) {
-    const batchAnalyticsData = [
-      {
-        Metric: 'Highest Score',
-        Value: Math.max(...completedItems.map((i) => i.score || 0)),
-        Details: completedItems.find((i) => i.score === Math.max(...completedItems.map((x) => x.score || 0)))
-          ?.rollNumber || 'N/A',
-      },
-      {
-        Metric: 'Lowest Score',
-        Value: Math.min(...completedItems.map((i) => i.score || 0)),
-        Details: completedItems.find((i) => i.score === Math.min(...completedItems.map((x) => x.score || 0)))
-          ?.rollNumber || 'N/A',
-      },
-      {
-        Metric: 'Median Score',
-        Value: completedItems.length > 0
-          ? completedItems.map((i) => i.score || 0).sort((a, b) => a - b)[Math.floor(completedItems.length / 2)]
-          : 0,
-        Details: '',
-      },
-      {
-        Metric: 'Students >= 90%',
-        Value: completedItems.filter((i) => (i.accuracy || 0) >= 90).length,
-        Details: `${((completedItems.filter((i) => (i.accuracy || 0) >= 90).length / completedItems.length) * 100).toFixed(1)}%`,
-      },
-      {
-        Metric: 'Students >= 75%',
-        Value: completedItems.filter((i) => (i.accuracy || 0) >= 75).length,
-        Details: `${((completedItems.filter((i) => (i.accuracy || 0) >= 75).length / completedItems.length) * 100).toFixed(1)}%`,
-      },
-      {
-        Metric: 'Students >= 60%',
-        Value: completedItems.filter((i) => (i.accuracy || 0) >= 60).length,
-        Details: `${((completedItems.filter((i) => (i.accuracy || 0) >= 60).length / completedItems.length) * 100).toFixed(1)}%`,
-      },
-      {
-        Metric: 'Students < 60%',
-        Value: completedItems.filter((i) => (i.accuracy || 0) < 60).length,
-        Details: `${((completedItems.filter((i) => (i.accuracy || 0) < 60).length / completedItems.length) * 100).toFixed(1)}%`,
-      },
-    ];
+    const avgScore = completedItems.reduce((s, i) => s + (i.score || 0), 0) / completedItems.length;
+    const avgAccuracy = completedItems.reduce((s, i) => s + (i.accuracy || 0), 0) / completedItems.length;
+    const highestScore = Math.max(...completedItems.map(i => i.score || 0));
+    const lowestScore = Math.min(...completedItems.map(i => i.score || 0));
+    const totalQ = completedItems[0]?.totalQuestions || 0;
+    const sortedScores = completedItems.map(i => i.score || 0).sort((a, b) => a - b);
+    const medianScore = sortedScores[Math.floor(sortedScores.length / 2)];
+    
+    addKeyValue('Average Score', `${avgScore.toFixed(2)}/${totalQ}`);
+    addKeyValue('Average Accuracy', `${avgAccuracy.toFixed(2)}%`);
+    addKeyValue('Highest Score', `${highestScore}/${totalQ}`);
+    addKeyValue('Lowest Score', `${lowestScore}/${totalQ}`);
+    addKeyValue('Median Score', `${medianScore}/${totalQ}`);
+    addKeyValue('Unique Students', new Set(completedItems.map(i => i.rollNumber).filter(Boolean)).size);
+    addKeyValue('Unique Subjects', new Set(completedItems.map(i => i.subjectCode).filter(Boolean)).size);
+  }
+  addBlankRow();
 
-    formatter.addSheet('Batch Analytics', batchAnalyticsData, [{ wch: 25 }, { wch: 15 }, { wch: 30 }]);
-
-    // Score Distribution Chart
-    const scoreRanges = {
-      '90-100%': completedItems.filter((i) => (i.accuracy || 0) >= 90).length,
-      '75-89%': completedItems.filter((i) => (i.accuracy || 0) >= 75 && (i.accuracy || 0) < 90).length,
-      '60-74%': completedItems.filter((i) => (i.accuracy || 0) >= 60 && (i.accuracy || 0) < 75).length,
-      '50-59%': completedItems.filter((i) => (i.accuracy || 0) >= 50 && (i.accuracy || 0) < 60).length,
-      'Below 50%': completedItems.filter((i) => (i.accuracy || 0) < 50).length,
-    };
-
-    const scoreDistData: any[] = [];
-
-    Object.entries(scoreRanges).forEach(([range, count]) => {
-      const percentage = (count / completedItems.length) * 100;
-      scoreDistData.push({
-        Range: range,
-        Count: count,
-        Percentage: `${percentage.toFixed(1)}%`,
-        Visual: '█'.repeat(Math.floor(percentage / 2)),
-      });
-    });
-
-    formatter.addSheet('Score Distribution', scoreDistData, [
-      { wch: 15 },
-      { wch: 10 },
-      { wch: 12 },
-      { wch: 50 },
+  // ── SECTION 3: All Student Results ──
+  addMergedTitle('📋 ALL STUDENT RESULTS', 'FF38A169', 'FFFFFFFF', 12);
+  addTableHeaders(['Roll No', 'Subject Code', 'Total Questions', 'Correct Count', 'Percentage of Score', 'Marks in Numbers', 'Status']);
+  
+  completedItems.forEach((item) => {
+    const accuracy = item.accuracy ?? 0;
+    const status = accuracy >= 90 ? 'Excellent' : accuracy >= 75 ? 'Good' : accuracy >= 60 ? 'Average' : accuracy >= 50 ? 'Below Avg' : 'Poor';
+    addDataRow([
+      item.rollNumber || 'N/A',
+      item.subjectCode || 'N/A',
+      item.totalQuestions || 0,
+      item.score || 0,
+      `${accuracy.toFixed(2)}%`,
+      `${item.score || 0}/${item.totalQuestions || 0}`,
+      status,
     ]);
+  });
+  addBlankRow();
+
+  // ── SECTION 4: Score Distribution ──
+  if (completedItems.length > 0) {
+    addMergedTitle('📈 SCORE DISTRIBUTION', 'FFDD6B20', 'FFFFFFFF', 12);
+    addTableHeaders(['Score Range', 'Student Count', 'Percentage', 'Visual']);
+    
+    const ranges = [
+      { label: '90-100%', filter: (a: number) => a >= 90 },
+      { label: '75-89%', filter: (a: number) => a >= 75 && a < 90 },
+      { label: '60-74%', filter: (a: number) => a >= 60 && a < 75 },
+      { label: '50-59%', filter: (a: number) => a >= 50 && a < 60 },
+      { label: 'Below 50%', filter: (a: number) => a < 50 },
+    ];
+    
+    ranges.forEach(({ label, filter }) => {
+      const count = completedItems.filter(i => filter(i.accuracy || 0)).length;
+      const pct = (count / completedItems.length) * 100;
+      addDataRow([label, count, `${pct.toFixed(1)}%`, '█'.repeat(Math.floor(pct / 2))]);
+    });
+    addBlankRow();
+
+    // ── SECTION 5: Subject-wise Breakdown ──
+    const subjects = [...new Set(completedItems.map(i => i.subjectCode).filter(Boolean))] as string[];
+    if (subjects.length > 0) {
+      addMergedTitle('📚 SUBJECT-WISE BREAKDOWN', 'FF805AD5', 'FFFFFFFF', 12);
+      addTableHeaders(['Subject Code', 'Students', 'Avg Score', 'Avg Accuracy', 'Highest', 'Lowest', 'Pass Rate (≥60%)']);
+      
+      subjects.sort().forEach((subj) => {
+        const subjItems = completedItems.filter(i => i.subjectCode === subj);
+        const avgS = subjItems.reduce((s, i) => s + (i.score || 0), 0) / subjItems.length;
+        const avgA = subjItems.reduce((s, i) => s + (i.accuracy || 0), 0) / subjItems.length;
+        const hi = Math.max(...subjItems.map(i => i.score || 0));
+        const lo = Math.min(...subjItems.map(i => i.score || 0));
+        const totalQ = subjItems[0]?.totalQuestions || 0;
+        const passRate = (subjItems.filter(i => (i.accuracy || 0) >= 60).length / subjItems.length) * 100;
+        addDataRow([subj, subjItems.length, `${avgS.toFixed(1)}/${totalQ}`, `${avgA.toFixed(1)}%`, `${hi}/${totalQ}`, `${lo}/${totalQ}`, `${passRate.toFixed(1)}%`]);
+      });
+      addBlankRow();
+    }
+
+    // ── SECTION 6: Top & Bottom Performers ──
+    const sorted = [...completedItems].sort((a, b) => (b.accuracy || 0) - (a.accuracy || 0));
+    if (sorted.length >= 3) {
+      addMergedTitle('🏆 TOP PERFORMERS', 'FF2F855A', 'FFFFFFFF', 12);
+      addTableHeaders(['Rank', 'Roll No', 'Subject', 'Score', 'Accuracy']);
+      sorted.slice(0, Math.min(5, sorted.length)).forEach((item, idx) => {
+        addDataRow([idx + 1, item.rollNumber || 'N/A', item.subjectCode || 'N/A', `${item.score}/${item.totalQuestions}`, `${(item.accuracy || 0).toFixed(1)}%`]);
+      });
+      addBlankRow();
+
+      addMergedTitle('⚠️ NEEDS IMPROVEMENT', 'FFC53030', 'FFFFFFFF', 12);
+      addTableHeaders(['Rank', 'Roll No', 'Subject', 'Score', 'Accuracy']);
+      sorted.slice(-Math.min(5, sorted.length)).reverse().forEach((item, idx) => {
+        addDataRow([idx + 1, item.rollNumber || 'N/A', item.subjectCode || 'N/A', `${item.score}/${item.totalQuestions}`, `${(item.accuracy || 0).toFixed(1)}%`]);
+      });
+      addBlankRow();
+    }
   }
 
-  // Generate filename
-  const fileName = `Batch_Results_${new Date().toISOString().split('T')[0]}_${
-    completedItems.length
-  }students.xlsx`;
+  // ── SECTION 7: Answer Key ──
+  if (answerKey && answerKey.length > 0) {
+    addMergedTitle('🔑 ANSWER KEY', 'FF4A5568', 'FFFFFFFF', 12);
+    // Show answer key in rows of 10
+    for (let start = 0; start < answerKey.length; start += 7) {
+      const chunk = answerKey.slice(start, start + 7);
+      const labels = chunk.map((_, i) => `Q${start + i + 1}`);
+      addTableHeaders(labels);
+      addDataRow(chunk);
+    }
+    addBlankRow();
+  }
+
+  // ── SECTION 8: Failed Sheets ──
+  if (errorItems.length > 0) {
+    addMergedTitle('❌ FAILED SHEETS', 'FFC53030', 'FFFFFFFF', 12);
+    addTableHeaders(['File Name', 'Error']);
+    errorItems.forEach((item) => {
+      addDataRow([item.fileName, item.error || 'Unknown error']);
+    });
+    addBlankRow();
+  }
+
+  // ── Footer ──
+  if (settings.footerText) {
+    const row = ws.getRow(currentRow);
+    row.getCell(1).value = settings.footerText;
+    row.getCell(1).font = { name: settings.fontFamily, size: 9, italic: true, color: { argb: 'FF666666' } };
+    row.getCell(1).alignment = { horizontal: 'center' };
+    ws.mergeCells(currentRow, 1, currentRow, maxCols);
+  }
+
+  // Generate file
+  const fileName = `Batch_Results_${new Date().toISOString().split('T')[0]}_${completedItems.length}students.xlsx`;
   await formatter.generateFile(fileName);
   return fileName;
 };
