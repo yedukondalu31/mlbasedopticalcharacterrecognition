@@ -31,7 +31,7 @@ export const useSavedAnswerKeys = () => {
       }
 
       const { data, error } = await supabase
-        .from('saved_answer_keys' as any)
+        .from('saved_answer_keys')
         .select('*')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false });
