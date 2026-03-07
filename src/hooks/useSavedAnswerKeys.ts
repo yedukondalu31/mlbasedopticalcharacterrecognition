@@ -69,7 +69,7 @@ export const useSavedAnswerKeys = () => {
       }
 
       const { data, error } = await supabase
-        .from('saved_answer_keys' as any)
+        .from('saved_answer_keys')
         .insert({
           user_id: user.id,
           name,
@@ -104,7 +104,7 @@ export const useSavedAnswerKeys = () => {
   const deleteAnswerKey = async (id: string) => {
     try {
       const { error } = await supabase
-        .from('saved_answer_keys' as any)
+        .from('saved_answer_keys')
         .delete()
         .eq('id', id);
 
@@ -131,7 +131,7 @@ export const useSavedAnswerKeys = () => {
   ) => {
     try {
       const { data, error } = await supabase
-        .from('saved_answer_keys' as any)
+        .from('saved_answer_keys')
         .update(updates)
         .eq('id', id)
         .select()
