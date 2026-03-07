@@ -210,7 +210,7 @@ const AnswerKeyForm = ({
           detectRollNumber={detectRollNumber}
           detectSubjectCode={detectSubjectCode}
           onLoadKey={handleLoadKey}
-          disabled={disabled || isProcessing}
+          disabled={isProcessing}
         />
       </div>
 
