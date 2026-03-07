@@ -31,13 +31,13 @@ export const useSavedAnswerKeys = () => {
       }
 
       const { data, error } = await supabase
-        .from('saved_answer_keys' as any)
+        .from('saved_answer_keys')
         .select('*')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
-      setSavedKeys((data as unknown as SavedAnswerKey[]) || []);
+      setSavedKeys((data as SavedAnswerKey[]) || []);
     } catch (error) {
       console.error('Error fetching saved keys:', error);
       toast({
@@ -69,7 +69,7 @@ export const useSavedAnswerKeys = () => {
       }
 
       const { data, error } = await supabase
-        .from('saved_answer_keys' as any)
+        .from('saved_answer_keys')
         .insert({
           user_id: user.id,
           name,
@@ -84,7 +84,7 @@ export const useSavedAnswerKeys = () => {
 
       if (error) throw error;
 
-      setSavedKeys(prev => [data as unknown as SavedAnswerKey, ...prev]);
+      setSavedKeys(prev => [data as SavedAnswerKey, ...prev]);
       toast({
         title: "Answer key saved",
         description: `"${name}" has been saved successfully`,
@@ -104,7 +104,7 @@ export const useSavedAnswerKeys = () => {
   const deleteAnswerKey = async (id: string) => {
     try {
       const { error } = await supabase
-        .from('saved_answer_keys' as any)
+        .from('saved_answer_keys')
         .delete()
         .eq('id', id);
 
@@ -131,7 +131,7 @@ export const useSavedAnswerKeys = () => {
   ) => {
     try {
       const { data, error } = await supabase
-        .from('saved_answer_keys' as any)
+        .from('saved_answer_keys')
         .update(updates)
         .eq('id', id)
         .select()
@@ -139,7 +139,7 @@ export const useSavedAnswerKeys = () => {
 
       if (error) throw error;
 
-      setSavedKeys(prev => prev.map(key => key.id === id ? (data as unknown as SavedAnswerKey) : key));
+      setSavedKeys(prev => prev.map(key => key.id === id ? (data as SavedAnswerKey) : key));
       toast({
         title: "Updated",
         description: "Answer key has been updated",
