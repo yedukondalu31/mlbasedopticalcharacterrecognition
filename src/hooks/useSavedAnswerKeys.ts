@@ -37,7 +37,7 @@ export const useSavedAnswerKeys = () => {
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
-      setSavedKeys((data as unknown as SavedAnswerKey[]) || []);
+      setSavedKeys((data as SavedAnswerKey[]) || []);
     } catch (error) {
       console.error('Error fetching saved keys:', error);
       toast({
@@ -84,7 +84,7 @@ export const useSavedAnswerKeys = () => {
 
       if (error) throw error;
 
-      setSavedKeys(prev => [data as unknown as SavedAnswerKey, ...prev]);
+      setSavedKeys(prev => [data as SavedAnswerKey, ...prev]);
       toast({
         title: "Answer key saved",
         description: `"${name}" has been saved successfully`,
@@ -139,7 +139,7 @@ export const useSavedAnswerKeys = () => {
 
       if (error) throw error;
 
-      setSavedKeys(prev => prev.map(key => key.id === id ? (data as unknown as SavedAnswerKey) : key));
+      setSavedKeys(prev => prev.map(key => key.id === id ? (data as SavedAnswerKey) : key));
       toast({
         title: "Updated",
         description: "Answer key has been updated",
