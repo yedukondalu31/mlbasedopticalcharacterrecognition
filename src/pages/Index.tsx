@@ -320,6 +320,111 @@ const Index = () => {
     }
   };
 
+  const CONCURRENCY = 3;
+
+  const processOneSheetSingle = async (
+    index: number,
+    correctAnswers: string[],
+    gridConfig?: { rows: number; columns: number },
+    detectRollNumber?: boolean,
+    detectSubjectCode?: boolean,
+  ): Promise<boolean> => {
+    setBatchProcessing(prev => prev.map((item, idx) => 
+      idx === index ? { ...item, status: 'processing' as const } : item
+    ));
+
+    try {
+      if (!session) throw new Error("Authentication required");
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-answer-sheet`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            image: batchImages[index].dataUrl,
+            answerKey: correctAnswers,
+            gridConfig,
+            detectRollNumber,
+            detectSubjectCode,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to analyze");
+      }
+
+      const result = await response.json();
+      
+      // Upload to storage (non-blocking)
+      let imageStorageUrl = 'pending';
+      try {
+        const base64Data = batchImages[index].dataUrl.split(',')[1];
+        const binaryData = atob(base64Data);
+        const bytes = new Uint8Array(binaryData.length);
+        for (let j = 0; j < binaryData.length; j++) {
+          bytes[j] = binaryData.charCodeAt(j);
+        }
+        const blob = new Blob([bytes], { type: 'image/jpeg' });
+        const fileName = `${session.user.id}/${Date.now()}-${index}.jpg`;
+        const { error: uploadError } = await supabase.storage
+          .from('answer-sheets')
+          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
+        if (!uploadError) {
+          const { data: signedUrlData } = await supabase.storage
+            .from('answer-sheets')
+            .createSignedUrl(fileName, 60 * 60 * 24 * 365);
+          imageStorageUrl = signedUrlData?.signedUrl || fileName;
+        } else {
+          imageStorageUrl = 'storage-upload-failed';
+        }
+      } catch {
+        imageStorageUrl = 'storage-upload-failed';
+      }
+
+      await supabase.from('evaluations').insert({
+        user_id: session.user.id,
+        image_url: imageStorageUrl,
+        answer_key: correctAnswers,
+        extracted_answers: result.extractedAnswers,
+        correct_answers: result.correctAnswers,
+        roll_number: result.rollNumber,
+        subject_code: result.subjectCode,
+        grid_rows: gridConfig?.rows,
+        grid_columns: gridConfig?.columns,
+        score: result.score,
+        total_questions: result.totalQuestions,
+        accuracy: result.accuracy,
+        confidence: result.confidence,
+        low_confidence_count: result.lowConfidenceCount,
+        detailed_results: result.detailedResults,
+      });
+
+      setBatchProcessing(prev => prev.map((item, idx) => 
+        idx === index ? { 
+          ...item, status: 'completed' as const,
+          rollNumber: result.rollNumber, subjectCode: result.subjectCode,
+          score: result.score, totalQuestions: result.totalQuestions,
+          accuracy: result.accuracy,
+        } : item
+      ));
+      return true;
+    } catch (error) {
+      setBatchProcessing(prev => prev.map((item, idx) => 
+        idx === index ? { 
+          ...item, status: 'error' as const,
+          error: error instanceof Error ? error.message : 'Processing failed'
+        } : item
+      ));
+      return false;
+    }
+  };
+
   const processBatchAnswerSheets = async (
     correctAnswers: string[], 
     gridConfig?: { rows: number; columns: number }, 
@@ -330,134 +435,27 @@ const Index = () => {
     setIsProcessing(true);
     setCurrentBatchIndex(startFromIndex);
     
-    let successCount = 0;
-    let processedInThisRun = 0;
-    
-    // Process only pending items starting from startFromIndex
+    // Collect pending indices
+    const pendingIndices: number[] = [];
+    let alreadyCompleted = 0;
     for (let i = startFromIndex; i < batchImages.length; i++) {
-      // Skip already completed or errored items
-      if (batchProcessing[i]?.status === 'completed' || batchProcessing[i]?.status === 'error') {
-        if (batchProcessing[i]?.status === 'completed') successCount++;
-        continue;
-      }
-      setCurrentBatchIndex(i);
+      if (batchProcessing[i]?.status === 'completed') { alreadyCompleted++; continue; }
+      if (batchProcessing[i]?.status === 'error') continue;
+      pendingIndices.push(i);
+    }
+
+    let successCount = alreadyCompleted;
+
+    // Process in parallel chunks
+    for (let chunk = 0; chunk < pendingIndices.length; chunk += CONCURRENCY) {
+      const batch = pendingIndices.slice(chunk, chunk + CONCURRENCY);
+      setCurrentBatchIndex(batch[0]);
       
-      // Update status to processing
-      setBatchProcessing(prev => prev.map((item, idx) => 
-        idx === i ? { ...item, status: 'processing' as const } : item
-      ));
-
-      try {
-        if (!session) {
-          throw new Error("Authentication required");
-        }
-
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-answer-sheet`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({
-              image: batchImages[i].dataUrl,
-              answerKey: correctAnswers,
-              gridConfig,
-              detectRollNumber,
-              detectSubjectCode,
-            }),
-          }
-        );
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || "Failed to analyze answer sheet");
-        }
-
-        const result = await response.json();
-        
-        // Upload image to storage bucket
-        let imageStorageUrl = '';
-        try {
-          const base64Data = batchImages[i].dataUrl.split(',')[1];
-          const binaryData = atob(base64Data);
-          const bytes = new Uint8Array(binaryData.length);
-          for (let j = 0; j < binaryData.length; j++) {
-            bytes[j] = binaryData.charCodeAt(j);
-          }
-          const blob = new Blob([bytes], { type: 'image/jpeg' });
-          
-          const fileName = `${session.user.id}/${Date.now()}-${i}.jpg`;
-          const { error: uploadError } = await supabase.storage
-            .from('answer-sheets')
-            .upload(fileName, blob, {
-              contentType: 'image/jpeg',
-              upsert: false,
-            });
-
-          if (!uploadError) {
-            const { data: signedUrlData } = await supabase.storage
-              .from('answer-sheets')
-              .createSignedUrl(fileName, 60 * 60 * 24 * 365);
-            imageStorageUrl = signedUrlData?.signedUrl || fileName;
-          } else {
-            imageStorageUrl = 'storage-upload-failed';
-          }
-        } catch {
-          imageStorageUrl = 'storage-upload-failed';
-        }
-
-        // Save to database with storage URL
-        const { error: dbError } = await supabase
-          .from('evaluations')
-          .insert({
-            user_id: session.user.id,
-            image_url: imageStorageUrl,
-            answer_key: correctAnswers,
-            extracted_answers: result.extractedAnswers,
-            correct_answers: result.correctAnswers,
-            roll_number: result.rollNumber,
-            subject_code: result.subjectCode,
-            grid_rows: gridConfig?.rows,
-            grid_columns: gridConfig?.columns,
-            score: result.score,
-            total_questions: result.totalQuestions,
-            accuracy: result.accuracy,
-            confidence: result.confidence,
-            low_confidence_count: result.lowConfidenceCount,
-            detailed_results: result.detailedResults,
-          });
-
-        // Update status to completed
-        setBatchProcessing(prev => prev.map((item, idx) => 
-          idx === i ? { 
-            ...item, 
-            status: 'completed' as const,
-            rollNumber: result.rollNumber,
-            subjectCode: result.subjectCode,
-            score: result.score,
-            totalQuestions: result.totalQuestions,
-            accuracy: result.accuracy,
-          } : item
-        ));
-        
-        successCount++;
-        processedInThisRun++;
-
-      } catch (error) {
-        // Error processing batch item
-        
-        // Update status to error
-        setBatchProcessing(prev => prev.map((item, idx) => 
-          idx === i ? { 
-            ...item, 
-            status: 'error' as const,
-            error: error instanceof Error ? error.message : 'Processing failed'
-          } : item
-        ));
-        processedInThisRun++;
-      }
+      const results = await Promise.all(
+        batch.map(i => processOneSheetSingle(i, correctAnswers, gridConfig, detectRollNumber, detectSubjectCode))
+      );
+      
+      successCount += results.filter(Boolean).length;
     }
 
     setIsProcessing(false);
@@ -466,7 +464,7 @@ const Index = () => {
     
     toast({
       title: "Batch processing complete!",
-      description: `Successfully processed ${successCount} of ${batchImages.length} answer sheets${processedInThisRun < batchImages.length ? ` (${processedInThisRun} new)` : ''}`,
+      description: `Successfully processed ${successCount} of ${batchImages.length} answer sheets`,
     });
   };
 
