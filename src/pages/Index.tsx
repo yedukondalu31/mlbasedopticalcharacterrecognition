@@ -650,11 +650,13 @@ const Index = () => {
             />
             
             {evaluationResult && (
-              <ResultsDashboard 
-                result={evaluationResult}
-                uploadedImage={uploadedImage}
-                onReset={handleReset}
-              />
+              <Suspense fallback={<div className="animate-pulse h-64 bg-muted rounded-lg" />}>
+                <ResultsDashboard 
+                  result={evaluationResult}
+                  uploadedImage={uploadedImage}
+                  onReset={handleReset}
+                />
+              </Suspense>
             )}
           </>
         )}
