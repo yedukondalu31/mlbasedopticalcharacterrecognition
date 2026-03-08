@@ -117,17 +117,22 @@ serve(async (req) => {
 
     const rollNumberSection = detectRollNumber ? `
 ROLL NUMBER EXTRACTION:
-- Located on the RIGHT side, typically 10 boxes with one character each (A-Z, a-z, 0-9)
-- Labels: "Roll No", "Student ID", "ID Number"
-- Must be EXACTLY 10 characters, use uppercase, "?" for illegible
+- Look for a dedicated section labeled "Roll No", "Roll Number", "Reg No", "Registration Number", "Student ID", "ID Number", "Enrollment No", or similar
+- Usually located at the TOP or RIGHT side of the sheet in a row of boxes
+- Can be ANY length (typically 5-15 characters), alphanumeric (A-Z, 0-9)
+- Read ALL characters in the boxes, use uppercase
+- If partially illegible, use "?" for unclear characters but still return what you can read
+- Return null ONLY if no roll number section exists at all on the sheet
 ` : "";
 
     const subjectCodeSection = detectSubjectCode ? `
 SUBJECT CODE EXTRACTION:
-- Found in header, margins, or near answer grid
-- Labels: "Subject Code", "Paper Code", "Course Code", etc.
-- Can be any length (2-20 chars), alphanumeric, may include dashes/dots
-- DO NOT confuse with roll number
+- Look for labels: "Subject Code", "Paper Code", "Course Code", "Subject", "Paper", "Code" etc.
+- Found in header area, margins, top section, or near the answer grid
+- Can be any length (2-20 chars), alphanumeric, may include dashes/slashes/dots (e.g., "CS-101", "B20IT567")
+- DO NOT confuse with roll number — subject codes are typically shorter and in a different location
+- If partially illegible, return your best guess rather than null
+- Return null ONLY if no subject code section exists at all on the sheet
 ` : "";
 
     const combinedPrompt = `You are an expert OCR engine for handwritten OMR/grid-based answer sheets. You MUST extract answers even from EXTREMELY dim, dark, faded, or poorly-lit images taken in near-darkness or minimal ambient light.
