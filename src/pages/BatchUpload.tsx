@@ -13,7 +13,7 @@ import { ArrowLeft, Layers, Users } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-const CONCURRENCY = 3;
+const CONCURRENCY = 6;
 
 const BatchUpload = () => {
   const [session, setSession] = useState<Session | null>(null);
