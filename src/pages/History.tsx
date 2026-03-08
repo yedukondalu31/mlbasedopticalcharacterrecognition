@@ -298,10 +298,34 @@ const History = () => {
         {/* Results Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Evaluations</CardTitle>
-            <CardDescription>
-              {loading ? "Loading..." : `Showing ${filteredEvaluations.length} of ${evaluations.length} evaluations`}
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Evaluations</CardTitle>
+                <CardDescription>
+                  {loading ? "Loading..." : `Showing ${filteredEvaluations.length} of ${evaluations.length} evaluations`}
+                </CardDescription>
+              </div>
+              {selectedIds.size > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" disabled={deleting}>
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete {selectedIds.size} selected
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete {selectedIds.size} evaluation(s)?</AlertDialogTitle>
+                      <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -316,6 +340,12 @@ const History = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={selectedIds.size === filteredEvaluations.length && filteredEvaluations.length > 0}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Roll Number</TableHead>
                       <TableHead>Subject</TableHead>
@@ -328,6 +358,12 @@ const History = () => {
                   <TableBody>
                     {filteredEvaluations.map((evaluation) => (
                       <TableRow key={evaluation.id}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedIds.has(evaluation.id)}
+                            onCheckedChange={() => toggleSelect(evaluation.id)}
+                          />
+                        </TableCell>
                         <TableCell className="text-sm">
                           {format(new Date(evaluation.created_at), 'MMM dd, yyyy HH:mm')}
                         </TableCell>
@@ -349,14 +385,34 @@ const History = () => {
                           {getConfidenceBadge(evaluation.confidence)}
                         </TableCell>
                         <TableCell>
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            onClick={() => handleViewDetails(evaluation)}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
+                              onClick={() => handleViewDetails(evaluation)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={deleting}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete this evaluation?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    {evaluation.roll_number ? `Evaluation for ${evaluation.roll_number} will be permanently deleted.` : "This evaluation will be permanently deleted."}
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteSingle(evaluation.id)}>Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
