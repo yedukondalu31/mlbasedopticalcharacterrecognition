@@ -36,6 +36,7 @@ const Hero = ({ session }: { session: Session }) => {
           >
             <Layers className="h-4 w-4 md:mr-2" />
             <span className="hidden md:inline">Batch</span>
+          </Button>
           <Button 
             variant="outline" 
             size="sm"
