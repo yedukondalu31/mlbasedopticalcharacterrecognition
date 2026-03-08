@@ -512,25 +512,35 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
                 </p>
               </div>
 
-              <div className="flex gap-3 justify-center mt-6">
-                <Button variant="default" size="lg" onClick={startCamera}>
-                  <Camera className="mr-2 h-5 w-5" />
-                  Take Photo
-                </Button>
-                
-                <Button variant="outline" size="lg" asChild>
-                  <label htmlFor="file-upload" className="cursor-pointer">
-                    <ImageIcon className="mr-2 h-5 w-5" />
-                    {isBatchMode ? 'Select Multiple' : 'Upload Image'}
-                  </label>
-                </Button>
+              <div className="flex gap-4 justify-center mt-6">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="default" size="lg" onClick={startCamera} className="flex flex-col items-center gap-1 h-auto py-3 px-5">
+                      <Camera className="h-6 w-6" />
+                      <span className="text-sm font-medium">Take Photo</span>
+                      <span className="text-[10px] opacity-75 font-normal">Live camera</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>Opens your device camera to capture a photo in real-time</p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="lg" asChild className="flex flex-col items-center gap-1 h-auto py-3 px-5">
+                      <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-1">
+                        <ImageIcon className="h-6 w-6" />
+                        <span className="text-sm font-medium">{isBatchMode ? 'Select Multiple' : 'Upload Image'}</span>
+                        <span className="text-[10px] opacity-75 font-normal">{isBatchMode ? 'From gallery' : 'From gallery/files'}</span>
+                      </label>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>{isBatchMode ? 'Select multiple images from your gallery or file manager' : 'Pick an existing image from your gallery or file manager'}</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
-              
-              <p className="text-xs text-center text-muted-foreground mt-3">
-                {isBatchMode 
-                  ? '"Select Multiple" lets you choose multiple images from your gallery'
-                  : '"Take Photo" uses your camera live. "Upload Image" picks from your gallery.'}
-              </p>
             </div>
           </div>
         ) : (
