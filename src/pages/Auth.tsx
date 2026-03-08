@@ -128,6 +128,15 @@ export default function AuthPage() {
 
     if (!validateCaptcha()) return;
 
+    if (authMode === 'signup' && password !== confirmPassword) {
+      toast({
+        title: 'Passwords do not match',
+        description: 'Please make sure both passwords are the same',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       if (authMode === 'signup') {
