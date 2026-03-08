@@ -258,7 +258,7 @@ Return JSON only:
 EXACTLY ${answerKey.length} answers. Every answer MUST be A-E. Do NOT return "?" — always give your best guess.`;
 
       try {
-        const verifyResponse = await callAI(LOVABLE_API_KEY, "google/gemini-2.5-pro", verifyPrompt, image);
+        const verifyResponse = await callAI(LOVABLE_API_KEY, "google/gemini-2.5-flash", verifyPrompt, image);
         const verifyMatch = verifyResponse.match(/\{[\s\S]*\}/);
         if (verifyMatch) {
           const verified = JSON.parse(verifyMatch[0]);
