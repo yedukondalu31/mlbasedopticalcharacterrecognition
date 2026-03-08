@@ -130,13 +130,24 @@ SUBJECT CODE EXTRACTION:
 - DO NOT confuse with roll number
 ` : "";
 
-    const combinedPrompt = `You are an expert OCR engine for handwritten OMR/grid-based answer sheets. You must extract answers with maximum accuracy even from low-quality, dim, faded, or poorly-lit images.
+    const combinedPrompt = `You are an expert OCR engine for handwritten OMR/grid-based answer sheets. You MUST extract answers even from EXTREMELY dim, dark, faded, or poorly-lit images taken in near-darkness or minimal ambient light.
 
-IMAGE QUALITY HANDLING:
-- If the image is dim, faded, low-contrast, or poorly-lit, INCREASE your sensitivity. Look harder at faint marks.
-- Distinguish between pencil marks (often light/gray) and empty cells. Even very faint pencil marks count as answers.
-- For overexposed/bright images, focus on subtle shadows and indentations that indicate written answers.
-- Report quality issues but STILL extract the best possible answers.
+CRITICAL LOW-LIGHT HANDLING:
+- You are trained to read answer sheets photographed in VERY LOW LIGHT conditions (e.g., a single lamp, phone flashlight, twilight, or near-dark rooms).
+- Mentally MAXIMIZE contrast and brightness before reading. Treat any slight variation in pixel shade as a potential pencil mark.
+- In dim images, pencil marks appear as VERY SUBTLE gray-on-gray differences. These are VALID answers — extract them.
+- Even if the image looks almost entirely dark or washed out, there ARE answers written. Try harder.
+- Shadows, uneven lighting, and glare are expected. Read through them.
+- If you can see even the OUTLINE or GRID of the answer sheet, the answers are there — look for any tonal variation within cells.
+- For overexposed/bright areas, look for subtle indentations or shadow edges of pencil strokes.
+- NEVER give up on a cell. A "?" should ONLY be returned if the cell area is completely destroyed/torn/missing.
+
+IMAGE QUALITY ADAPTATION:
+- VERY DIM/DARK: Increase sensitivity to maximum. Any gray variation = pencil mark. Squint harder.
+- DIM/LOW CONTRAST: Look for relative darkness within cells compared to cell background.
+- FADED/WASHED OUT: Focus on edges and outlines of handwritten characters.
+- UNEVEN LIGHTING: Compare marks within the same row/column for consistency.
+- BLURRY: Use character shape heuristics (curves vs straight lines) to distinguish letters.
 
 SHEET STRUCTURE:
 1. This is an answer sheet with EXACTLY ${answerKey.length} questions.
@@ -144,31 +155,32 @@ SHEET STRUCTURE:
 
 ANSWER EXTRACTION RULES:
 - Each cell contains a SINGLE handwritten letter: A, B, C, D, or E.
-- Use "?" ONLY for cells that are genuinely EMPTY/BLANK with no visible mark at all.
-- For faint/light marks: extract the answer even if faint — do NOT mark as "?".
-- For crossed-out or corrected answers: use the FINAL intended answer (the one NOT crossed out). If an answer is written over a correction, use the top/latest mark.
-- Pay careful attention to commonly confused letters:
-  • A vs D (check the top: A has a point, D has a curve)
-  • B vs D (check left side: B has bumps on right, D is smooth curve)  
+- NEVER use "?" unless the physical cell is destroyed or completely missing from the image.
+- For faint/barely-visible marks: ALWAYS extract a best-guess answer. Even 30% visibility is enough.
+- For crossed-out or corrected answers: use the FINAL intended answer.
+- Commonly confused letters:
+  • A vs D (A has pointed top, D has curved top)
+  • B vs D (B has bumps on right, D is smooth curve)
   • C vs G (G has a horizontal bar)
-  • B vs 8 or 3 (B is a letter, look for context)
+  • B vs 8 or 3 (B is a letter context)
 - If a cell has a bubble/circle filled in, read which option (A-E) is marked.
 ${rollNumberSection}${subjectCodeSection}
 
 OUTPUT FORMAT (strict JSON, no markdown):
 {
   "isAnswerSheet": true,
-  "quality": "good"|"fair"|"poor",
-  "qualityIssues": ["description of any issues like dim lighting, blur, skew, etc."],
-  "brightnessLevel": "normal"|"dim"|"bright"|"very_dim",
+  "quality": "good"|"fair"|"poor"|"very_poor",
+  "qualityIssues": ["description of any issues"],
+  "brightnessLevel": "normal"|"dim"|"very_dim"|"near_dark"|"bright",
+  "lightingCondition": "good"|"uneven"|"low"|"minimal"|"near_dark",
   "answers": ["A", "B", ...],
   "confidence": ["high"|"medium"|"low", ...]${detectRollNumber ? ',\n  "rollNumber": "string or null"' : ""}${detectSubjectCode ? ',\n  "subjectCode": "string or null"' : ""}
 }
 
 CRITICAL RULES:
 - "answers" array MUST have EXACTLY ${answerKey.length} elements.
-- Each answer MUST be a single uppercase letter (A-E) or "?".
-- Prefer extracting a best-guess letter over returning "?" — only use "?" for truly blank cells.
+- Each answer MUST be a single uppercase letter (A-E) or "?" (ONLY for destroyed/missing cells).
+- You MUST attempt a best-guess for EVERY cell, even in terrible lighting.
 - Return ONLY the JSON object, nothing else.`;
 
     const aiResponse = await callAI(LOVABLE_API_KEY, "google/gemini-2.5-flash", combinedPrompt, image);
