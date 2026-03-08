@@ -24,10 +24,10 @@ interface Evaluation {
   accuracy: number;
   confidence: string | null;
   created_at: string;
-  extracted_answers: string[];
-  correct_answers: string[];
-  detailed_results: any;
-  image_url: string;
+  extracted_answers?: string[];
+  correct_answers?: string[];
+  detailed_results?: any;
+  image_url?: string;
 }
 
 const History = () => {
@@ -45,26 +45,33 @@ const History = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let mounted = true;
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (!session) navigate('/auth');
+      if (mounted) {
+        setSession(session);
+        if (!session) navigate('/auth');
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setSession(session);
-        if (!session) navigate('/auth');
+        if (mounted) {
+          setSession(session);
+          if (!session) navigate('/auth');
+        }
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, [navigate]);
 
+  const sessionUserId = session?.user?.id;
+
   useEffect(() => {
-    if (session) {
+    if (sessionUserId) {
       fetchEvaluations();
     }
-  }, [session]);
+  }, [sessionUserId]);
 
   useEffect(() => {
     applyFilters();
@@ -75,7 +82,7 @@ const History = () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('evaluations')
-        .select('*')
+        .select('id, roll_number, subject_code, score, total_questions, accuracy, confidence, created_at, image_url')
         .eq('user_id', session!.user.id)
         .order('created_at', { ascending: false });
 
@@ -129,7 +136,22 @@ const History = () => {
     return subjects as string[];
   };
 
-  const handleViewDetails = (evaluation: Evaluation) => {
+  const handleViewDetails = async (evaluation: Evaluation) => {
+    // Lazy-load full data if not already fetched
+    if (!evaluation.extracted_answers) {
+      const { data, error } = await supabase
+        .from('evaluations')
+        .select('extracted_answers, correct_answers, detailed_results, image_url')
+        .eq('id', evaluation.id)
+        .single();
+      if (!error && data) {
+        const full = { ...evaluation, ...data };
+        setEvaluations(prev => prev.map(e => e.id === evaluation.id ? full : e));
+        setSelectedEvaluation(full);
+        setDialogOpen(true);
+        return;
+      }
+    }
     setSelectedEvaluation(evaluation);
     setDialogOpen(true);
   };
@@ -506,8 +528,8 @@ const History = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                    {selectedEvaluation.extracted_answers.map((extracted, index) => {
-                      const correct = selectedEvaluation.correct_answers[index];
+                    {(selectedEvaluation.extracted_answers || []).map((extracted, index) => {
+                      const correct = (selectedEvaluation.correct_answers || [])[index];
                       const isCorrect = extracted === correct;
                       
                       return (

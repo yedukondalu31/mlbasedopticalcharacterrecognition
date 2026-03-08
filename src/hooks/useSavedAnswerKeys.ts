@@ -157,11 +157,26 @@ export const useSavedAnswerKeys = () => {
   };
 
   useEffect(() => {
-    fetchSavedKeys();
+    let hasFetched = false;
 
-    // Refresh keys when auth state changes (initial session load, login/logout).
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      fetchSavedKeys();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session && !hasFetched) {
+        hasFetched = true;
+        fetchSavedKeys();
+      } else if (!session) {
+        setSavedKeys([]);
+        setLoading(false);
+      }
+    });
+
+    // Also fetch immediately if session already exists
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session && !hasFetched) {
+        hasFetched = true;
+        fetchSavedKeys();
+      } else if (!session) {
+        setLoading(false);
+      }
     });
 
     return () => subscription.unsubscribe();
