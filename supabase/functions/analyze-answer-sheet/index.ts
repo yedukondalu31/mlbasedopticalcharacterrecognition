@@ -130,13 +130,24 @@ SUBJECT CODE EXTRACTION:
 - DO NOT confuse with roll number
 ` : "";
 
-    const combinedPrompt = `You are an expert OCR engine for handwritten OMR/grid-based answer sheets. You must extract answers with maximum accuracy even from low-quality, dim, faded, or poorly-lit images.
+    const combinedPrompt = `You are an expert OCR engine for handwritten OMR/grid-based answer sheets. You MUST extract answers even from EXTREMELY dim, dark, faded, or poorly-lit images taken in near-darkness or minimal ambient light.
 
-IMAGE QUALITY HANDLING:
-- If the image is dim, faded, low-contrast, or poorly-lit, INCREASE your sensitivity. Look harder at faint marks.
-- Distinguish between pencil marks (often light/gray) and empty cells. Even very faint pencil marks count as answers.
-- For overexposed/bright images, focus on subtle shadows and indentations that indicate written answers.
-- Report quality issues but STILL extract the best possible answers.
+CRITICAL LOW-LIGHT HANDLING:
+- You are trained to read answer sheets photographed in VERY LOW LIGHT conditions (e.g., a single lamp, phone flashlight, twilight, or near-dark rooms).
+- Mentally MAXIMIZE contrast and brightness before reading. Treat any slight variation in pixel shade as a potential pencil mark.
+- In dim images, pencil marks appear as VERY SUBTLE gray-on-gray differences. These are VALID answers — extract them.
+- Even if the image looks almost entirely dark or washed out, there ARE answers written. Try harder.
+- Shadows, uneven lighting, and glare are expected. Read through them.
+- If you can see even the OUTLINE or GRID of the answer sheet, the answers are there — look for any tonal variation within cells.
+- For overexposed/bright areas, look for subtle indentations or shadow edges of pencil strokes.
+- NEVER give up on a cell. A "?" should ONLY be returned if the cell area is completely destroyed/torn/missing.
+
+IMAGE QUALITY ADAPTATION:
+- VERY DIM/DARK: Increase sensitivity to maximum. Any gray variation = pencil mark. Squint harder.
+- DIM/LOW CONTRAST: Look for relative darkness within cells compared to cell background.
+- FADED/WASHED OUT: Focus on edges and outlines of handwritten characters.
+- UNEVEN LIGHTING: Compare marks within the same row/column for consistency.
+- BLURRY: Use character shape heuristics (curves vs straight lines) to distinguish letters.
 
 SHEET STRUCTURE:
 1. This is an answer sheet with EXACTLY ${answerKey.length} questions.
@@ -144,31 +155,32 @@ SHEET STRUCTURE:
 
 ANSWER EXTRACTION RULES:
 - Each cell contains a SINGLE handwritten letter: A, B, C, D, or E.
-- Use "?" ONLY for cells that are genuinely EMPTY/BLANK with no visible mark at all.
-- For faint/light marks: extract the answer even if faint — do NOT mark as "?".
-- For crossed-out or corrected answers: use the FINAL intended answer (the one NOT crossed out). If an answer is written over a correction, use the top/latest mark.
-- Pay careful attention to commonly confused letters:
-  • A vs D (check the top: A has a point, D has a curve)
-  • B vs D (check left side: B has bumps on right, D is smooth curve)  
+- NEVER use "?" unless the physical cell is destroyed or completely missing from the image.
+- For faint/barely-visible marks: ALWAYS extract a best-guess answer. Even 30% visibility is enough.
+- For crossed-out or corrected answers: use the FINAL intended answer.
+- Commonly confused letters:
+  • A vs D (A has pointed top, D has curved top)
+  • B vs D (B has bumps on right, D is smooth curve)
   • C vs G (G has a horizontal bar)
-  • B vs 8 or 3 (B is a letter, look for context)
+  • B vs 8 or 3 (B is a letter context)
 - If a cell has a bubble/circle filled in, read which option (A-E) is marked.
 ${rollNumberSection}${subjectCodeSection}
 
 OUTPUT FORMAT (strict JSON, no markdown):
 {
   "isAnswerSheet": true,
-  "quality": "good"|"fair"|"poor",
-  "qualityIssues": ["description of any issues like dim lighting, blur, skew, etc."],
-  "brightnessLevel": "normal"|"dim"|"bright"|"very_dim",
+  "quality": "good"|"fair"|"poor"|"very_poor",
+  "qualityIssues": ["description of any issues"],
+  "brightnessLevel": "normal"|"dim"|"very_dim"|"near_dark"|"bright",
+  "lightingCondition": "good"|"uneven"|"low"|"minimal"|"near_dark",
   "answers": ["A", "B", ...],
   "confidence": ["high"|"medium"|"low", ...]${detectRollNumber ? ',\n  "rollNumber": "string or null"' : ""}${detectSubjectCode ? ',\n  "subjectCode": "string or null"' : ""}
 }
 
 CRITICAL RULES:
 - "answers" array MUST have EXACTLY ${answerKey.length} elements.
-- Each answer MUST be a single uppercase letter (A-E) or "?".
-- Prefer extracting a best-guess letter over returning "?" — only use "?" for truly blank cells.
+- Each answer MUST be a single uppercase letter (A-E) or "?" (ONLY for destroyed/missing cells).
+- You MUST attempt a best-guess for EVERY cell, even in terrible lighting.
 - Return ONLY the JSON object, nothing else.`;
 
     const aiResponse = await callAI(LOVABLE_API_KEY, "google/gemini-2.5-flash", combinedPrompt, image);
@@ -212,31 +224,38 @@ CRITICAL RULES:
     }
 
     // === VERIFICATION PASS for dim/poor quality or high uncertainty ===
-    const isDimOrPoor = parsed.brightnessLevel === "dim" || parsed.brightnessLevel === "very_dim" || parsed.quality === "poor";
+    const isDimOrPoor = parsed.brightnessLevel === "dim" || parsed.brightnessLevel === "very_dim" || parsed.brightnessLevel === "near_dark" || parsed.quality === "poor" || parsed.quality === "very_poor" || parsed.lightingCondition === "minimal" || parsed.lightingCondition === "near_dark";
     const lowConfAnswers = (parsed.confidence || []).filter((c: string) => c === "low" || c === "medium");
+    const questionMarkCount = (parsed.answers || []).filter((a: string) => a === "?").length;
     const uncertaintyRatio = parsed.answers ? lowConfAnswers.length / parsed.answers.length : 0;
+    const questionMarkRatio = parsed.answers ? questionMarkCount / parsed.answers.length : 0;
     
-    if (isDimOrPoor || uncertaintyRatio > 0.3) {
-      // Re-analyze with a stronger model for verification
-      const verifyPrompt = `You are verifying OCR results from a dim/low-quality answer sheet image. A previous pass extracted these answers but had low confidence.
+    // Trigger verification more aggressively for dim images
+    if (isDimOrPoor || uncertaintyRatio > 0.2 || questionMarkRatio > 0.1) {
+      const verifyPrompt = `You are a SPECIALIST in reading answer sheets photographed in EXTREMELY LOW LIGHT or MINIMAL LIGHTING conditions. Your job is to verify and correct a previous OCR pass that struggled with this dim image.
 
 Previous extraction: ${JSON.stringify(parsed.answers || [])}
-Previous quality assessment: ${parsed.quality}, brightness: ${parsed.brightnessLevel || "unknown"}
+Previous quality: ${parsed.quality}, brightness: ${parsed.brightnessLevel || "unknown"}, lighting: ${parsed.lightingCondition || "unknown"}
+Number of "?" (unread) cells: ${questionMarkCount} out of ${answerKey.length}
 
-RE-EXAMINE the image carefully. The image may be dim, faded, or poorly lit.
-- Look for ANY faint pencil marks, even very light ones
-- Increase contrast sensitivity mentally — faint gray marks ARE valid answers
-- There are EXACTLY ${answerKey.length} questions${gridConfig ? ` in a ${gridConfig.rows}×${gridConfig.columns} grid` : ""}
+THIS IMAGE WAS TAKEN IN LOW LIGHT. You MUST:
+1. Mentally boost contrast to MAXIMUM — imagine cranking brightness +200% and contrast +300%
+2. Every cell has an answer written in it. Students fill ALL cells. A "?" means the previous pass failed, not that the cell is blank.
+3. Look for the SLIGHTEST tonal variation within each cell boundary — even 5% darker = a pencil mark
+4. For cells marked "?" by previous pass: look EXTRA hard. Zoom into that cell mentally. The answer IS there.
+5. Use context clues: if surrounding answers are clear, the grid structure helps locate exact cell boundaries
+6. Common in dim photos: pencil marks appear as very subtle gray smudges — these ARE valid letters
 
-For each question, either confirm the previous answer or provide a corrected one.
+Grid: ${gridConfig ? `${gridConfig.rows}×${gridConfig.columns}` : "sequential"}, EXACTLY ${answerKey.length} questions.
+
 Return JSON only:
 {
   "answers": ["A", "B", ...],
   "confidence": ["high"|"medium"|"low", ...],
-  "corrections": [{"q": 1, "from": "?", "to": "B", "reason": "faint mark visible"}]
+  "corrections": [{"q": 1, "from": "?", "to": "B", "reason": "faint pencil mark visible as B shape"}]
 }
 
-EXACTLY ${answerKey.length} answers required. Prefer best-guess letter over "?".`;
+EXACTLY ${answerKey.length} answers. Every answer MUST be A-E. Do NOT return "?" — always give your best guess.`;
 
       try {
         const verifyResponse = await callAI(LOVABLE_API_KEY, "google/gemini-2.5-pro", verifyPrompt, image);
@@ -244,13 +263,12 @@ EXACTLY ${answerKey.length} answers required. Prefer best-guess letter over "?".
         if (verifyMatch) {
           const verified = JSON.parse(verifyMatch[0]);
           if (verified.answers && Array.isArray(verified.answers) && verified.answers.length === answerKey.length) {
-            // Merge: prefer verified answers where original had low confidence
             parsed.answers = parsed.answers.map((orig: string, i: number) => {
               const origConf = (parsed.confidence || [])[i] || "unknown";
               const verifiedAnswer = verified.answers[i];
-              // Use verified answer if original was uncertain or "?"
+              // Use verified answer if original was uncertain, "?", or medium confidence
               if (orig === "?" && verifiedAnswer !== "?") return verifiedAnswer;
-              if (origConf === "low" && verifiedAnswer !== "?") return verifiedAnswer;
+              if ((origConf === "low" || origConf === "medium") && verifiedAnswer !== "?") return verifiedAnswer;
               return orig;
             });
             // Update confidence from verification
