@@ -224,31 +224,38 @@ CRITICAL RULES:
     }
 
     // === VERIFICATION PASS for dim/poor quality or high uncertainty ===
-    const isDimOrPoor = parsed.brightnessLevel === "dim" || parsed.brightnessLevel === "very_dim" || parsed.quality === "poor";
+    const isDimOrPoor = parsed.brightnessLevel === "dim" || parsed.brightnessLevel === "very_dim" || parsed.brightnessLevel === "near_dark" || parsed.quality === "poor" || parsed.quality === "very_poor" || parsed.lightingCondition === "minimal" || parsed.lightingCondition === "near_dark";
     const lowConfAnswers = (parsed.confidence || []).filter((c: string) => c === "low" || c === "medium");
+    const questionMarkCount = (parsed.answers || []).filter((a: string) => a === "?").length;
     const uncertaintyRatio = parsed.answers ? lowConfAnswers.length / parsed.answers.length : 0;
+    const questionMarkRatio = parsed.answers ? questionMarkCount / parsed.answers.length : 0;
     
-    if (isDimOrPoor || uncertaintyRatio > 0.3) {
-      // Re-analyze with a stronger model for verification
-      const verifyPrompt = `You are verifying OCR results from a dim/low-quality answer sheet image. A previous pass extracted these answers but had low confidence.
+    // Trigger verification more aggressively for dim images
+    if (isDimOrPoor || uncertaintyRatio > 0.2 || questionMarkRatio > 0.1) {
+      const verifyPrompt = `You are a SPECIALIST in reading answer sheets photographed in EXTREMELY LOW LIGHT or MINIMAL LIGHTING conditions. Your job is to verify and correct a previous OCR pass that struggled with this dim image.
 
 Previous extraction: ${JSON.stringify(parsed.answers || [])}
-Previous quality assessment: ${parsed.quality}, brightness: ${parsed.brightnessLevel || "unknown"}
+Previous quality: ${parsed.quality}, brightness: ${parsed.brightnessLevel || "unknown"}, lighting: ${parsed.lightingCondition || "unknown"}
+Number of "?" (unread) cells: ${questionMarkCount} out of ${answerKey.length}
 
-RE-EXAMINE the image carefully. The image may be dim, faded, or poorly lit.
-- Look for ANY faint pencil marks, even very light ones
-- Increase contrast sensitivity mentally — faint gray marks ARE valid answers
-- There are EXACTLY ${answerKey.length} questions${gridConfig ? ` in a ${gridConfig.rows}×${gridConfig.columns} grid` : ""}
+THIS IMAGE WAS TAKEN IN LOW LIGHT. You MUST:
+1. Mentally boost contrast to MAXIMUM — imagine cranking brightness +200% and contrast +300%
+2. Every cell has an answer written in it. Students fill ALL cells. A "?" means the previous pass failed, not that the cell is blank.
+3. Look for the SLIGHTEST tonal variation within each cell boundary — even 5% darker = a pencil mark
+4. For cells marked "?" by previous pass: look EXTRA hard. Zoom into that cell mentally. The answer IS there.
+5. Use context clues: if surrounding answers are clear, the grid structure helps locate exact cell boundaries
+6. Common in dim photos: pencil marks appear as very subtle gray smudges — these ARE valid letters
 
-For each question, either confirm the previous answer or provide a corrected one.
+Grid: ${gridConfig ? `${gridConfig.rows}×${gridConfig.columns}` : "sequential"}, EXACTLY ${answerKey.length} questions.
+
 Return JSON only:
 {
   "answers": ["A", "B", ...],
   "confidence": ["high"|"medium"|"low", ...],
-  "corrections": [{"q": 1, "from": "?", "to": "B", "reason": "faint mark visible"}]
+  "corrections": [{"q": 1, "from": "?", "to": "B", "reason": "faint pencil mark visible as B shape"}]
 }
 
-EXACTLY ${answerKey.length} answers required. Prefer best-guess letter over "?".`;
+EXACTLY ${answerKey.length} answers. Every answer MUST be A-E. Do NOT return "?" — always give your best guess.`;
 
       try {
         const verifyResponse = await callAI(LOVABLE_API_KEY, "google/gemini-2.5-pro", verifyPrompt, image);
@@ -256,13 +263,12 @@ EXACTLY ${answerKey.length} answers required. Prefer best-guess letter over "?".
         if (verifyMatch) {
           const verified = JSON.parse(verifyMatch[0]);
           if (verified.answers && Array.isArray(verified.answers) && verified.answers.length === answerKey.length) {
-            // Merge: prefer verified answers where original had low confidence
             parsed.answers = parsed.answers.map((orig: string, i: number) => {
               const origConf = (parsed.confidence || [])[i] || "unknown";
               const verifiedAnswer = verified.answers[i];
-              // Use verified answer if original was uncertain or "?"
+              // Use verified answer if original was uncertain, "?", or medium confidence
               if (orig === "?" && verifiedAnswer !== "?") return verifiedAnswer;
-              if (origConf === "low" && verifiedAnswer !== "?") return verifiedAnswer;
+              if ((origConf === "low" || origConf === "medium") && verifiedAnswer !== "?") return verifiedAnswer;
               return orig;
             });
             // Update confidence from verification
