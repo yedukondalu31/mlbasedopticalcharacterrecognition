@@ -7,10 +7,12 @@ export interface ExportSettings {
   schoolName?: string;
   schoolLogoUrl?: string;
   headerColor: string;
+  accentColor?: string;
   fontFamily: string;
   includeLogo: boolean;
   includeHeader: boolean;
   footerText?: string;
+  borderStyle?: 'thin' | 'medium' | 'thick';
 }
 
 const DEFAULT_SETTINGS: ExportSettings = {
