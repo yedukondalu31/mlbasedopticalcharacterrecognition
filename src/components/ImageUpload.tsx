@@ -487,7 +487,6 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
             <input
               type="file"
               accept=".jpg,.jpeg,.png,image/jpeg,image/jpg,image/png"
-              capture="environment"
               onChange={handleFileInput}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               id="file-upload"
