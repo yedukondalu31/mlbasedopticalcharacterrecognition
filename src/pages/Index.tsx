@@ -84,7 +84,7 @@ const Index = () => {
 
   if (!session) return null;
 
-  const handleImageUpload = useCallback((imageUrl: string) => {
+  const handleImageUpload = (imageUrl: string) => {
     setUploadedImage(imageUrl);
     setEvaluationResult(null);
     setBatchImages([]);
@@ -93,7 +93,7 @@ const Index = () => {
       title: "Image uploaded successfully",
       description: "Now set your answer key to begin evaluation",
     });
-  }, []);
+  };
 
   const handleBatchUpload = (images: { file: File; dataUrl: string }[], append: boolean = false) => {
     if (append && batchImages.length > 0) {
