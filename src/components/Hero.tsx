@@ -1,4 +1,4 @@
-import { ScanSearch, Zap, CheckCircle, TrendingUp, LogOut, History, Key, Layers } from "lucide-react";
+import { ScanSearch, Zap, CheckCircle, TrendingUp, LogOut, History, Key } from "lucide-react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
