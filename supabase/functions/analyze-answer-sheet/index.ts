@@ -357,6 +357,7 @@ EXACTLY ${answerKey.length} answers. Every answer MUST be A-E. Do NOT return "?"
         accuracy: Math.round(accuracy * 10) / 10,
         confidence: avgConfidence, imageQuality, lowConfidenceCount, qualityIssues,
         detailedResults,
+        rollNumberWarning,
         metadata: {
           timestamp: new Date().toISOString(),
           processingNotes: qualityIssues.length > 0 
