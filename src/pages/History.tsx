@@ -24,10 +24,10 @@ interface Evaluation {
   accuracy: number;
   confidence: string | null;
   created_at: string;
-  extracted_answers: string[];
-  correct_answers: string[];
-  detailed_results: any;
-  image_url: string;
+  extracted_answers?: string[];
+  correct_answers?: string[];
+  detailed_results?: any;
+  image_url?: string;
 }
 
 const History = () => {
