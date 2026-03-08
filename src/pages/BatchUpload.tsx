@@ -313,6 +313,9 @@ const BatchUpload = () => {
     setCurrentBatchIndex(startFromIndex);
     cancelledRef.current = false;
     
+    // Pre-cache the auth token once for the entire batch
+    await refreshToken();
+    
     // Collect indices that need processing
     const pendingIndices: number[] = [];
     let alreadyCompleted = 0;
