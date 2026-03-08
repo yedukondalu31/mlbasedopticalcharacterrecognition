@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Session } from "@supabase/supabase-js";
+import AuthGuard from "@/components/AuthGuard";
 import ImageUpload from "@/components/ImageUpload";
 import AnswerKeyForm from "@/components/AnswerKeyForm";
 import BatchProcessor, { BatchProcessingItem } from "@/components/BatchProcessor";
@@ -15,8 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 const CONCURRENCY = 6;
 
-const BatchUpload = () => {
-  const [session, setSession] = useState<Session | null>(null);
+const BatchUploadContent = ({ session }: { session: Session }) => {
   const [batchImages, setBatchImages] = useState<{ file: File; dataUrl: string }[]>([]);
   const [batchProcessing, setBatchProcessing] = useState<BatchProcessingItem[]>([]);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
@@ -33,22 +33,6 @@ const BatchUpload = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const expectedCount = location.state?.expectedCount as number | null;
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (!session) navigate('/auth');
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        if (!session) navigate('/auth');
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
 
   useEffect(() => {
     if (!expectedCount) {
@@ -76,8 +60,9 @@ const BatchUpload = () => {
     { number: 4, label: "Process" },
   ];
 
-  if (!session || !expectedCount) return null;
+  if (!expectedCount) return null;
 
+  // ... rest of handlers remain identical
   const handleBatchUpload = (images: { file: File; dataUrl: string }[], append: boolean = false) => {
     if ((append || batchImages.length > 0) && batchImages.length > 0) {
       setBatchImages(prev => [...prev, ...images]);
@@ -152,16 +137,11 @@ const BatchUpload = () => {
 
   const handleRetryFailed = () => {
     if (answerKey.length === 0) return;
-    
-    // Reset error items to pending
     setBatchProcessing(prev => prev.map(item => 
       item.status === 'error' ? { ...item, status: 'pending' as const, error: undefined } : item
     ));
-    
-    // Find first error index and start from there
     const firstErrorIndex = batchProcessing.findIndex(item => item.status === 'error');
     if (firstErrorIndex >= 0) {
-      // Small delay to let state update
       setTimeout(() => {
         processBatchAnswerSheets(answerKey, lastGridConfig, lastDetectRollNumber, lastDetectSubjectCode, firstErrorIndex);
       }, 100);
@@ -170,18 +150,15 @@ const BatchUpload = () => {
 
   const handleRetryItem = (index: number) => {
     if (answerKey.length === 0) return;
-    
     setBatchProcessing(prev => prev.map((item, idx) => 
       idx === index ? { ...item, status: 'pending' as const, error: undefined } : item
     ));
-    
     setTimeout(() => {
       processBatchAnswerSheets(answerKey, lastGridConfig, lastDetectRollNumber, lastDetectSubjectCode, index);
     }, 100);
   };
 
   const hasPendingSheets = batchProcessing.some(item => item.status === 'pending');
-
 
   const refreshToken = async () => {
     const { data: { session: freshSession } } = await supabase.auth.getSession();
@@ -203,8 +180,6 @@ const BatchUpload = () => {
     ));
 
     try {
-      if (!session) throw new Error("Authentication required");
-
       const token = tokenRef.current || await refreshToken();
 
       const response = await fetch(
@@ -232,7 +207,7 @@ const BatchUpload = () => {
 
       const result = await response.json();
       
-      // Run storage upload + DB insert in parallel
+      // Storage upload
       const storagePromise = (async () => {
         try {
           const base64Data = batchImages[i].dataUrl.split(',')[1];
@@ -260,7 +235,7 @@ const BatchUpload = () => {
 
       const imageStorageUrl = await storagePromise;
 
-      // Save to database (fire-and-forget for speed, don't block completion)
+      // Fire-and-forget DB insert
       supabase.from('evaluations').insert({
         user_id: session.user.id,
         image_url: imageStorageUrl,
@@ -313,10 +288,8 @@ const BatchUpload = () => {
     setCurrentBatchIndex(startFromIndex);
     cancelledRef.current = false;
     
-    // Pre-cache the auth token once for the entire batch
     await refreshToken();
     
-    // Collect indices that need processing
     const pendingIndices: number[] = [];
     let alreadyCompleted = 0;
     for (let i = startFromIndex; i < batchImages.length; i++) {
@@ -327,7 +300,6 @@ const BatchUpload = () => {
 
     let successCount = alreadyCompleted;
 
-    // Process in parallel chunks
     for (let chunk = 0; chunk < pendingIndices.length; chunk += CONCURRENCY) {
       if (cancelledRef.current) break;
       
@@ -357,7 +329,6 @@ const BatchUpload = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-background border-b">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center gap-4">
@@ -379,12 +350,10 @@ const BatchUpload = () => {
       </div>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Step Indicator */}
         <Card className="p-4">
           <StepIndicator steps={steps} currentStep={currentStep} />
         </Card>
 
-        {/* Progress Card */}
         <Card className="p-6 bg-gradient-to-r from-primary/5 to-primary/10 border-2 border-primary/20">
           <div className="flex items-center justify-center gap-4">
             <div className="p-3 bg-primary/20 rounded-full">
@@ -411,7 +380,6 @@ const BatchUpload = () => {
           </div>
         </Card>
 
-        {/* Upload Section - hide when processing complete */}
         {(!isProcessing || batchProcessing.filter(i => i.status === 'completed').length === 0) && (
           <ImageUpload 
             onImageUpload={() => {}}
@@ -423,7 +391,6 @@ const BatchUpload = () => {
           />
         )}
 
-        {/* Quick Apply Saved Key */}
         {batchImages.length > 0 && answerKey.length === 0 && !isProcessing && (
           <QuickApplyKey
             onApplyKey={handleAnswerKeySubmit}
@@ -432,7 +399,6 @@ const BatchUpload = () => {
           />
         )}
 
-        {/* Answer Key Form - hide when processing or complete */}
         {batchImages.length > 0 && !isProcessing && batchProcessing.filter(i => i.status === 'completed').length === 0 && (
           <AnswerKeyForm 
             onSubmit={handleAnswerKeySubmit}
@@ -441,7 +407,6 @@ const BatchUpload = () => {
           />
         )}
 
-        {/* Batch Processing Progress */}
         {batchProcessing.length > 0 && (
           <BatchProcessor
             items={batchProcessing}
@@ -462,5 +427,11 @@ const BatchUpload = () => {
     </div>
   );
 };
+
+const BatchUpload = () => (
+  <AuthGuard>
+    {(session) => <BatchUploadContent session={session} />}
+  </AuthGuard>
+);
 
 export default BatchUpload;

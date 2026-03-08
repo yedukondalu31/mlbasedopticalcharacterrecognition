@@ -3,6 +3,7 @@ import { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const Hero = ({ session }: { session: Session }) => {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ const Hero = ({ session }: { session: Session }) => {
       
       <div className="container relative mx-auto px-4 py-8 md:py-16">
         <div className="absolute top-4 right-4 flex gap-2 flex-wrap justify-end">
+          <ThemeToggle />
           <Button 
             variant="outline" 
             size="sm"

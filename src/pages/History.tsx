@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import AuthGuard from "@/components/AuthGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,9 +12,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Search, Filter, Eye, Calendar, FileText, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, Filter, Eye, Calendar, FileText, Trash2, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+
+const PAGE_SIZE = 50;
 
 interface Evaluation {
   id: string;
@@ -30,11 +33,12 @@ interface Evaluation {
   image_url?: string;
 }
 
-const History = () => {
-  const [session, setSession] = useState<Session | null>(null);
+const HistoryContent = ({ session }: { session: Session }) => {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [filteredEvaluations, setFilteredEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [searchRollNumber, setSearchRollNumber] = useState("");
   const [selectedSubject, setSelectedSubject] = useState<string>("all");
   const [selectedDate, setSelectedDate] = useState("");
@@ -42,54 +46,49 @@ const History = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    let mounted = true;
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (mounted) {
-        setSession(session);
-        if (!session) navigate('/auth');
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (mounted) {
-          setSession(session);
-          if (!session) navigate('/auth');
-        }
-      }
-    );
-
-    return () => { mounted = false; subscription.unsubscribe(); };
-  }, [navigate]);
-
-  const sessionUserId = session?.user?.id;
-
-  useEffect(() => {
-    if (sessionUserId) {
-      fetchEvaluations();
-    }
-  }, [sessionUserId]);
+    fetchEvaluations(true);
+  }, []);
 
   useEffect(() => {
     applyFilters();
   }, [searchRollNumber, selectedSubject, selectedDate, evaluations]);
 
-  const fetchEvaluations = async () => {
+  const fetchEvaluations = async (initial: boolean = false) => {
     try {
-      setLoading(true);
+      if (initial) {
+        setLoading(true);
+        // Get total count
+        const { count } = await supabase
+          .from('evaluations')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', session.user.id);
+        setTotalCount(count);
+      } else {
+        setLoadingMore(true);
+      }
+
+      const offset = initial ? 0 : evaluations.length;
       const { data, error } = await supabase
         .from('evaluations')
         .select('id, roll_number, subject_code, score, total_questions, accuracy, confidence, created_at, image_url')
-        .eq('user_id', session!.user.id)
-        .order('created_at', { ascending: false });
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
 
       if (error) throw error;
 
-      setEvaluations(data || []);
-      setFilteredEvaluations(data || []);
+      const newData = data || [];
+      setHasMore(newData.length === PAGE_SIZE);
+
+      if (initial) {
+        setEvaluations(newData);
+      } else {
+        setEvaluations(prev => [...prev, ...newData]);
+      }
     } catch (error) {
       console.error("Error fetching evaluations:", error);
       toast({
@@ -99,25 +98,23 @@ const History = () => {
       });
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
   const applyFilters = () => {
     let filtered = [...evaluations];
 
-    // Filter by roll number
     if (searchRollNumber) {
       filtered = filtered.filter(e => 
         e.roll_number?.toLowerCase().includes(searchRollNumber.toLowerCase())
       );
     }
 
-    // Filter by subject code
     if (selectedSubject && selectedSubject !== "all") {
       filtered = filtered.filter(e => e.subject_code === selectedSubject);
     }
 
-    // Filter by date
     if (selectedDate) {
       filtered = filtered.filter(e => {
         const evalDate = format(new Date(e.created_at), 'yyyy-MM-dd');
@@ -137,7 +134,6 @@ const History = () => {
   };
 
   const handleViewDetails = async (evaluation: Evaluation) => {
-    // Lazy-load full data if not already fetched
     if (!evaluation.extracted_answers) {
       const { data, error } = await supabase
         .from('evaluations')
@@ -163,6 +159,7 @@ const History = () => {
       if (error) throw error;
       setEvaluations(prev => prev.filter(e => e.id !== id));
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+      if (totalCount !== null) setTotalCount(totalCount - 1);
       toast({ title: "Deleted", description: "Evaluation removed successfully" });
     } catch {
       toast({ title: "Error", description: "Failed to delete evaluation", variant: "destructive" });
@@ -177,9 +174,11 @@ const History = () => {
       setDeleting(true);
       const { error } = await supabase.from('evaluations').delete().in('id', Array.from(selectedIds));
       if (error) throw error;
+      const count = selectedIds.size;
       setEvaluations(prev => prev.filter(e => !selectedIds.has(e.id)));
       setSelectedIds(new Set());
-      toast({ title: "Deleted", description: `${selectedIds.size} evaluation(s) removed` });
+      if (totalCount !== null) setTotalCount(totalCount - count);
+      toast({ title: "Deleted", description: `${count} evaluation(s) removed` });
     } catch {
       toast({ title: "Error", description: "Failed to delete evaluations", variant: "destructive" });
     } finally {
@@ -205,14 +204,10 @@ const History = () => {
 
   const getConfidenceBadge = (confidence: string | null) => {
     if (!confidence) return <Badge variant="secondary">Unknown</Badge>;
-    
     const variant = confidence === "high" ? "default" : 
                    confidence === "medium" ? "secondary" : "destructive";
-    
     return <Badge variant={variant}>{confidence.toUpperCase()}</Badge>;
   };
-
-  if (!session) return null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -237,7 +232,7 @@ const History = () => {
             </div>
             <div className="text-sm">
               <span className="text-primary-foreground/80">Total: </span>
-              <span className="font-bold">{filteredEvaluations.length}</span>
+              <span className="font-bold">{totalCount ?? filteredEvaluations.length}</span>
             </div>
           </div>
         </div>
@@ -255,7 +250,6 @@ const History = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Roll Number Search */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Roll Number</label>
                 <div className="relative">
@@ -269,7 +263,6 @@ const History = () => {
                 </div>
               </div>
 
-              {/* Subject Code Filter */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Subject Code</label>
                 <Select value={selectedSubject} onValueChange={setSelectedSubject}>
@@ -285,7 +278,6 @@ const History = () => {
                 </Select>
               </div>
 
-              {/* Date Filter */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Date</label>
                 <div className="relative">
@@ -324,7 +316,7 @@ const History = () => {
               <div>
                 <CardTitle>Evaluations</CardTitle>
                 <CardDescription>
-                  {loading ? "Loading..." : `Showing ${filteredEvaluations.length} of ${evaluations.length} evaluations`}
+                  {loading ? "Loading..." : `Showing ${filteredEvaluations.length} of ${totalCount ?? evaluations.length} evaluations`}
                 </CardDescription>
               </div>
               {selectedIds.size > 0 && (
@@ -442,6 +434,23 @@ const History = () => {
                 </Table>
               </div>
             )}
+
+            {/* Load More Button */}
+            {hasMore && !loading && evaluations.length > 0 && (
+              <div className="flex justify-center mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => fetchEvaluations(false)}
+                  disabled={loadingMore}
+                  className="gap-2"
+                >
+                  {loadingMore ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  {loadingMore ? "Loading..." : `Load More (showing ${evaluations.length} of ${totalCount ?? '?'})`}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>
@@ -465,7 +474,6 @@ const History = () => {
 
           {selectedEvaluation && (
             <div className="space-y-4">
-              {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card>
                   <CardHeader className="pb-2">
@@ -505,7 +513,6 @@ const History = () => {
                 </Card>
               </div>
 
-              {/* Answer Sheet Image */}
               {selectedEvaluation.image_url && (
                 <Card>
                   <CardHeader>
@@ -521,7 +528,6 @@ const History = () => {
                 </Card>
               )}
 
-              {/* Detailed Results */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Answer Breakdown</CardTitle>
@@ -559,5 +565,11 @@ const History = () => {
     </div>
   );
 };
+
+const History = () => (
+  <AuthGuard>
+    {(session) => <HistoryContent session={session} />}
+  </AuthGuard>
+);
 
 export default History;

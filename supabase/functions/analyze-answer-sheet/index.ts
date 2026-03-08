@@ -300,16 +300,10 @@ EXACTLY ${answerKey.length} answers. Every answer MUST be A-E. Do NOT return "?"
     const imageQuality = parsed.quality || "unknown";
     const qualityIssues = parsed.qualityIssues || [];
 
-    // If roll number detection was required but not found
-    if (detectRollNumber && !rollNumber) {
-      return new Response(
-        JSON.stringify({ 
-          error: "Roll number could not be detected. Please ensure it is clearly filled.",
-          validationReason: "Roll number not found"
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // If roll number detection was required but not found — soft-fail with warning
+    const rollNumberWarning = (detectRollNumber && !rollNumber) 
+      ? "Roll number could not be detected from the answer sheet." 
+      : null;
 
     // Process extracted answers
     let extractedAnswers: string[] = parsed.answers || [];
@@ -363,6 +357,7 @@ EXACTLY ${answerKey.length} answers. Every answer MUST be A-E. Do NOT return "?"
         accuracy: Math.round(accuracy * 10) / 10,
         confidence: avgConfidence, imageQuality, lowConfidenceCount, qualityIssues,
         detailedResults,
+        rollNumberWarning,
         metadata: {
           timestamp: new Date().toISOString(),
           processingNotes: qualityIssues.length > 0 
