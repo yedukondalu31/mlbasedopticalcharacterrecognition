@@ -29,6 +29,7 @@ const BatchUpload = () => {
   const [startTime, setStartTime] = useState<number | null>(null);
   
   const cancelledRef = useRef(false);
+  const tokenRef = useRef<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const expectedCount = location.state?.expectedCount as number | null;
