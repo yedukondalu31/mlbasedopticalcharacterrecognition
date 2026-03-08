@@ -264,38 +264,6 @@ export default function AuthPage() {
     refreshCaptcha();
   };
 
-  const CaptchaField = () => (
-    <div className="space-y-2">
-      <Label>Verify you're human</Label>
-      <div className="flex items-center gap-2">
-        <div className="flex-1 flex items-center gap-2 rounded-md border border-input bg-muted/50 px-3 py-2">
-          <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
-          <span className="font-mono font-semibold text-sm text-foreground whitespace-nowrap">
-            {captcha.question}
-          </span>
-        </div>
-        <Input
-          type="number"
-          placeholder="Answer"
-          value={captchaInput}
-          onChange={(e) => setCaptchaInput(e.target.value)}
-          disabled={loading}
-          className="w-24 text-center font-mono"
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={refreshCaptcha}
-          className="shrink-0"
-          title="New question"
-        >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-primary/5 to-background">
       <div className="w-full max-w-md">
