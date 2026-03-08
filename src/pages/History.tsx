@@ -82,7 +82,7 @@ const History = () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('evaluations')
-        .select('*')
+        .select('id, roll_number, subject_code, score, total_questions, accuracy, confidence, created_at, image_url')
         .eq('user_id', session!.user.id)
         .order('created_at', { ascending: false });
 
