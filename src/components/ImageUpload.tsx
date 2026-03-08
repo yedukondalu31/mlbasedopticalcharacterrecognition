@@ -487,7 +487,6 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
             <input
               type="file"
               accept=".jpg,.jpeg,.png,image/jpeg,image/jpg,image/png"
-              capture="environment"
               onChange={handleFileInput}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               id="file-upload"
@@ -522,15 +521,15 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
                 <Button variant="outline" size="lg" asChild>
                   <label htmlFor="file-upload" className="cursor-pointer">
                     <ImageIcon className="mr-2 h-5 w-5" />
-                    {isBatchMode ? 'Select Multiple' : 'Upload/Camera'}
+                    {isBatchMode ? 'Select Multiple' : 'Upload Image'}
                   </label>
                 </Button>
               </div>
               
               <p className="text-xs text-center text-muted-foreground mt-3">
                 {isBatchMode 
-                  ? '"Select Multiple" button lets you choose multiple images from your gallery'
-                  : '"Upload/Camera" button opens your device camera or gallery'}
+                  ? '"Select Multiple" lets you choose multiple images from your gallery'
+                  : '"Take Photo" uses your camera live. "Upload Image" picks from your gallery.'}
               </p>
             </div>
           </div>
