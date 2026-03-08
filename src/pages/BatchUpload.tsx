@@ -13,7 +13,7 @@ import { ArrowLeft, Layers, Users } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-const CONCURRENCY = 3;
+const CONCURRENCY = 6;
 
 const BatchUpload = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -29,6 +29,7 @@ const BatchUpload = () => {
   const [startTime, setStartTime] = useState<number | null>(null);
   
   const cancelledRef = useRef(false);
+  const tokenRef = useRef<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const expectedCount = location.state?.expectedCount as number | null;
@@ -181,6 +182,13 @@ const BatchUpload = () => {
 
   const hasPendingSheets = batchProcessing.some(item => item.status === 'pending');
 
+
+  const refreshToken = async () => {
+    const { data: { session: freshSession } } = await supabase.auth.getSession();
+    tokenRef.current = freshSession?.access_token || session?.access_token || null;
+    return tokenRef.current;
+  };
+
   const processOneSheet = async (
     i: number,
     correctAnswers: string[],
@@ -197,9 +205,7 @@ const BatchUpload = () => {
     try {
       if (!session) throw new Error("Authentication required");
 
-      // Refresh token if needed
-      const { data: { session: freshSession } } = await supabase.auth.getSession();
-      const token = freshSession?.access_token || session.access_token;
+      const token = tokenRef.current || await refreshToken();
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-answer-sheet`,
@@ -226,34 +232,36 @@ const BatchUpload = () => {
 
       const result = await response.json();
       
-      // Upload image to storage (non-blocking)
-      let imageStorageUrl = 'pending';
-      try {
-        const base64Data = batchImages[i].dataUrl.split(',')[1];
-        const binaryData = atob(base64Data);
-        const bytes = new Uint8Array(binaryData.length);
-        for (let j = 0; j < binaryData.length; j++) {
-          bytes[j] = binaryData.charCodeAt(j);
-        }
-        const blob = new Blob([bytes], { type: 'image/jpeg' });
-        const fileName = `${session.user.id}/${Date.now()}-${i}.jpg`;
-        const { error: uploadError } = await supabase.storage
-          .from('answer-sheets')
-          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
-        if (!uploadError) {
-          const { data: signedUrlData } = await supabase.storage
+      // Run storage upload + DB insert in parallel
+      const storagePromise = (async () => {
+        try {
+          const base64Data = batchImages[i].dataUrl.split(',')[1];
+          const binaryData = atob(base64Data);
+          const bytes = new Uint8Array(binaryData.length);
+          for (let j = 0; j < binaryData.length; j++) {
+            bytes[j] = binaryData.charCodeAt(j);
+          }
+          const blob = new Blob([bytes], { type: 'image/jpeg' });
+          const fileName = `${session.user.id}/${Date.now()}-${i}.jpg`;
+          const { error: uploadError } = await supabase.storage
             .from('answer-sheets')
-            .createSignedUrl(fileName, 60 * 60 * 24 * 365);
-          imageStorageUrl = signedUrlData?.signedUrl || fileName;
-        } else {
-          imageStorageUrl = 'storage-upload-failed';
+            .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
+          if (!uploadError) {
+            const { data: signedUrlData } = await supabase.storage
+              .from('answer-sheets')
+              .createSignedUrl(fileName, 60 * 60 * 24 * 365);
+            return signedUrlData?.signedUrl || fileName;
+          }
+          return 'storage-upload-failed';
+        } catch {
+          return 'storage-upload-failed';
         }
-      } catch {
-        imageStorageUrl = 'storage-upload-failed';
-      }
+      })();
 
-      // Save to database
-      await supabase.from('evaluations').insert({
+      const imageStorageUrl = await storagePromise;
+
+      // Save to database (fire-and-forget for speed, don't block completion)
+      supabase.from('evaluations').insert({
         user_id: session.user.id,
         image_url: imageStorageUrl,
         answer_key: correctAnswers,
@@ -269,6 +277,8 @@ const BatchUpload = () => {
         confidence: result.confidence,
         low_confidence_count: result.lowConfidenceCount,
         detailed_results: result.detailedResults,
+      }).then(({ error }) => {
+        if (error) console.error('DB insert error:', error);
       });
 
       setBatchProcessing(prev => prev.map((item, idx) => 
@@ -302,6 +312,9 @@ const BatchUpload = () => {
     setStartTime(Date.now());
     setCurrentBatchIndex(startFromIndex);
     cancelledRef.current = false;
+    
+    // Pre-cache the auth token once for the entire batch
+    await refreshToken();
     
     // Collect indices that need processing
     const pendingIndices: number[] = [];

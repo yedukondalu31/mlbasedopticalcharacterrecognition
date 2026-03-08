@@ -8,7 +8,7 @@ const corsHeaders = {
 // In-memory rate limiting
 const requestLog = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60000;
-const MAX_REQUESTS_PER_MINUTE = 30; // Increased for parallel batch
+const MAX_REQUESTS_PER_MINUTE = 60; // Higher limit for parallel batch processing
 
 function checkRateLimit(identifier: string): { allowed: boolean; remaining: number; resetIn: number } {
   const now = Date.now();
@@ -258,7 +258,7 @@ Return JSON only:
 EXACTLY ${answerKey.length} answers. Every answer MUST be A-E. Do NOT return "?" — always give your best guess.`;
 
       try {
-        const verifyResponse = await callAI(LOVABLE_API_KEY, "google/gemini-2.5-pro", verifyPrompt, image);
+        const verifyResponse = await callAI(LOVABLE_API_KEY, "google/gemini-2.5-flash", verifyPrompt, image);
         const verifyMatch = verifyResponse.match(/\{[\s\S]*\}/);
         if (verifyMatch) {
           const verified = JSON.parse(verifyMatch[0]);
