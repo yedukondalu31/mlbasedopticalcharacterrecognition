@@ -136,7 +136,22 @@ const History = () => {
     return subjects as string[];
   };
 
-  const handleViewDetails = (evaluation: Evaluation) => {
+  const handleViewDetails = async (evaluation: Evaluation) => {
+    // Lazy-load full data if not already fetched
+    if (!evaluation.extracted_answers) {
+      const { data, error } = await supabase
+        .from('evaluations')
+        .select('extracted_answers, correct_answers, detailed_results, image_url')
+        .eq('id', evaluation.id)
+        .single();
+      if (!error && data) {
+        const full = { ...evaluation, ...data };
+        setEvaluations(prev => prev.map(e => e.id === evaluation.id ? full : e));
+        setSelectedEvaluation(full);
+        setDialogOpen(true);
+        return;
+      }
+    }
     setSelectedEvaluation(evaluation);
     setDialogOpen(true);
   };
