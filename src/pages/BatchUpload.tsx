@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Session } from "@supabase/supabase-js";
 import ImageUpload from "@/components/ImageUpload";
@@ -13,6 +13,8 @@ import { ArrowLeft, Layers, Users } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
+const CONCURRENCY = 3;
+
 const BatchUpload = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [batchImages, setBatchImages] = useState<{ file: File; dataUrl: string }[]>([]);
@@ -22,9 +24,11 @@ const BatchUpload = () => {
   const [answerKey, setAnswerKey] = useState<string[]>([]);
   const [isAppendMode, setIsAppendMode] = useState(false);
   const [lastGridConfig, setLastGridConfig] = useState<{ rows: number; columns: number } | undefined>();
-  const [lastDetectRollNumber, setLastDetectRollNumber] = useState<boolean>(false);
-  const [lastDetectSubjectCode, setLastDetectSubjectCode] = useState<boolean>(false);
+  const [lastDetectRollNumber, setLastDetectRollNumber] = useState(false);
+  const [lastDetectSubjectCode, setLastDetectSubjectCode] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
   
+  const cancelledRef = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
   const expectedCount = location.state?.expectedCount as number | null;
@@ -46,7 +50,6 @@ const BatchUpload = () => {
   }, [navigate]);
 
   useEffect(() => {
-    // If no expected count was passed, redirect back
     if (!expectedCount) {
       toast({
         title: "Missing information",
@@ -57,7 +60,6 @@ const BatchUpload = () => {
     }
   }, [expectedCount, navigate]);
 
-  // Calculate current step
   const currentStep = useMemo(() => {
     const completedCount = batchProcessing.filter(item => item.status === 'completed').length;
     if (completedCount > 0 || isProcessing) return 4;
@@ -77,7 +79,6 @@ const BatchUpload = () => {
 
   const handleBatchUpload = (images: { file: File; dataUrl: string }[], append: boolean = false) => {
     if ((append || batchImages.length > 0) && batchImages.length > 0) {
-      // Always append after first upload
       setBatchImages(prev => [...prev, ...images]);
       setBatchProcessing(prev => [
         ...prev,
@@ -91,7 +92,6 @@ const BatchUpload = () => {
         description: `Total: ${batchImages.length + images.length} answer sheets in this batch`,
       });
     } else {
-      // First upload
       setBatchImages(images);
       setBatchProcessing(images.map(img => ({
         fileName: img.file.name,
@@ -102,7 +102,6 @@ const BatchUpload = () => {
         description: "Upload more or submit the answer key to process",
       });
     }
-    // Enable append mode after first upload for continuous uploading
     setIsAppendMode(true);
   };
 
@@ -132,14 +131,9 @@ const BatchUpload = () => {
 
   const handleProcessNewSheets = () => {
     if (answerKey.length === 0) {
-      toast({
-        title: "Answer key required",
-        description: "Please submit an answer key first",
-        variant: "destructive",
-      });
+      toast({ title: "Answer key required", description: "Please submit an answer key first", variant: "destructive" });
       return;
     }
-    
     const firstPendingIndex = batchProcessing.findIndex(item => item.status === 'pending');
     if (firstPendingIndex >= 0) {
       processBatchAnswerSheets(answerKey, lastGridConfig, lastDetectRollNumber, lastDetectSubjectCode, firstPendingIndex);
@@ -147,9 +141,45 @@ const BatchUpload = () => {
     setIsAppendMode(false);
   };
 
-  const hasPendingSheets = batchProcessing.some(item => item.status === 'pending');
+  const handleCancel = () => {
+    cancelledRef.current = true;
+    toast({
+      title: "Batch cancelled",
+      description: "Processing will stop after the current sheets complete",
+    });
+  };
 
-  const CONCURRENCY = 3; // Process 3 sheets in parallel
+  const handleRetryFailed = () => {
+    if (answerKey.length === 0) return;
+    
+    // Reset error items to pending
+    setBatchProcessing(prev => prev.map(item => 
+      item.status === 'error' ? { ...item, status: 'pending' as const, error: undefined } : item
+    ));
+    
+    // Find first error index and start from there
+    const firstErrorIndex = batchProcessing.findIndex(item => item.status === 'error');
+    if (firstErrorIndex >= 0) {
+      // Small delay to let state update
+      setTimeout(() => {
+        processBatchAnswerSheets(answerKey, lastGridConfig, lastDetectRollNumber, lastDetectSubjectCode, firstErrorIndex);
+      }, 100);
+    }
+  };
+
+  const handleRetryItem = (index: number) => {
+    if (answerKey.length === 0) return;
+    
+    setBatchProcessing(prev => prev.map((item, idx) => 
+      idx === index ? { ...item, status: 'pending' as const, error: undefined } : item
+    ));
+    
+    setTimeout(() => {
+      processBatchAnswerSheets(answerKey, lastGridConfig, lastDetectRollNumber, lastDetectSubjectCode, index);
+    }, 100);
+  };
+
+  const hasPendingSheets = batchProcessing.some(item => item.status === 'pending');
 
   const processOneSheet = async (
     i: number,
@@ -158,6 +188,8 @@ const BatchUpload = () => {
     detectRollNumber?: boolean,
     detectSubjectCode?: boolean,
   ): Promise<boolean> => {
+    if (cancelledRef.current) return false;
+    
     setBatchProcessing(prev => prev.map((item, idx) => 
       idx === i ? { ...item, status: 'processing' as const } : item
     ));
@@ -165,13 +197,17 @@ const BatchUpload = () => {
     try {
       if (!session) throw new Error("Authentication required");
 
+      // Refresh token if needed
+      const { data: { session: freshSession } } = await supabase.auth.getSession();
+      const token = freshSession?.access_token || session.access_token;
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-answer-sheet`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
+            "Authorization": `Bearer ${token}`,
           },
           body: JSON.stringify({
             image: batchImages[i].dataUrl,
@@ -185,12 +221,12 @@ const BatchUpload = () => {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to analyze");
+        throw new Error(error.error || `Server error (${response.status})`);
       }
 
       const result = await response.json();
       
-      // Upload image to storage (non-blocking for speed)
+      // Upload image to storage (non-blocking)
       let imageStorageUrl = 'pending';
       try {
         const base64Data = batchImages[i].dataUrl.split(',')[1];
@@ -263,14 +299,16 @@ const BatchUpload = () => {
     startFromIndex: number = 0
   ) => {
     setIsProcessing(true);
+    setStartTime(Date.now());
     setCurrentBatchIndex(startFromIndex);
+    cancelledRef.current = false;
     
     // Collect indices that need processing
     const pendingIndices: number[] = [];
     let alreadyCompleted = 0;
     for (let i = startFromIndex; i < batchImages.length; i++) {
       if (batchProcessing[i]?.status === 'completed') { alreadyCompleted++; continue; }
-      if (batchProcessing[i]?.status === 'error') continue;
+      if (batchProcessing[i]?.status === 'error' && i !== startFromIndex) continue;
       pendingIndices.push(i);
     }
 
@@ -278,6 +316,8 @@ const BatchUpload = () => {
 
     // Process in parallel chunks
     for (let chunk = 0; chunk < pendingIndices.length; chunk += CONCURRENCY) {
+      if (cancelledRef.current) break;
+      
       const batch = pendingIndices.slice(chunk, chunk + CONCURRENCY);
       setCurrentBatchIndex(batch[0]);
       
@@ -291,9 +331,13 @@ const BatchUpload = () => {
     setIsProcessing(false);
     setCurrentBatchIndex(batchImages.length);
     setIsAppendMode(false);
+    setStartTime(null);
+    
+    const cancelled = cancelledRef.current;
+    cancelledRef.current = false;
     
     toast({
-      title: "Batch processing complete!",
+      title: cancelled ? "Batch processing stopped" : "Batch processing complete!",
       description: `Successfully processed ${successCount} of ${batchImages.length} answer sheets`,
     });
   };
@@ -326,6 +370,7 @@ const BatchUpload = () => {
         <Card className="p-4">
           <StepIndicator steps={steps} currentStep={currentStep} />
         </Card>
+
         {/* Progress Card */}
         <Card className="p-6 bg-gradient-to-r from-primary/5 to-primary/10 border-2 border-primary/20">
           <div className="flex items-center justify-center gap-4">
@@ -353,15 +398,17 @@ const BatchUpload = () => {
           </div>
         </Card>
 
-        {/* Upload Section */}
-        <ImageUpload 
-          onImageUpload={() => {}}
-          onBatchUpload={handleBatchUpload}
-          currentImage={null}
-          isBatchMode={true}
-          appendMode={isAppendMode}
-          onAppendModeChange={setIsAppendMode}
-        />
+        {/* Upload Section - hide when processing complete */}
+        {(!isProcessing || batchProcessing.filter(i => i.status === 'completed').length === 0) && (
+          <ImageUpload 
+            onImageUpload={() => {}}
+            onBatchUpload={handleBatchUpload}
+            currentImage={null}
+            isBatchMode={true}
+            appendMode={isAppendMode}
+            onAppendModeChange={setIsAppendMode}
+          />
+        )}
 
         {/* Quick Apply Saved Key */}
         {batchImages.length > 0 && answerKey.length === 0 && !isProcessing && (
@@ -372,8 +419,8 @@ const BatchUpload = () => {
           />
         )}
 
-        {/* Answer Key Form */}
-        {batchImages.length > 0 && (
+        {/* Answer Key Form - hide when processing or complete */}
+        {batchImages.length > 0 && !isProcessing && batchProcessing.filter(i => i.status === 'completed').length === 0 && (
           <AnswerKeyForm 
             onSubmit={handleAnswerKeySubmit}
             disabled={batchImages.length === 0 || isProcessing}
@@ -389,9 +436,13 @@ const BatchUpload = () => {
             isProcessing={isProcessing}
             answerKey={answerKey}
             expectedCount={expectedCount}
+            onCancel={handleCancel}
             onAddMore={handleAddMoreSheets}
             onProcessNewSheets={handleProcessNewSheets}
+            onRetryFailed={handleRetryFailed}
+            onRetryItem={handleRetryItem}
             hasPendingSheets={hasPendingSheets}
+            startTime={startTime}
           />
         )}
       </main>

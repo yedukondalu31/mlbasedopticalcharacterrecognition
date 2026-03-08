@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle, XCircle, Loader2, FileText, FileSpreadsheet, Plus, Play, ChevronDown } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, FileText, FileSpreadsheet, Plus, Play, ChevronDown, RotateCcw, Clock, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { formatBatchExport } from '@/lib/excelFormatter';
@@ -16,6 +16,17 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export interface BatchProcessingItem {
   fileName: string;
@@ -37,7 +48,10 @@ interface BatchProcessorProps {
   expectedCount?: number | null;
   onAddMore?: () => void;
   onProcessNewSheets?: () => void;
+  onRetryFailed?: () => void;
+  onRetryItem?: (index: number) => void;
   hasPendingSheets?: boolean;
+  startTime?: number | null;
 }
 
 const BatchProcessor = ({ 
@@ -49,25 +63,61 @@ const BatchProcessor = ({
   expectedCount,
   onAddMore,
   onProcessNewSheets,
-  hasPendingSheets
+  onRetryFailed,
+  onRetryItem,
+  hasPendingSheets,
+  startTime,
 }: BatchProcessorProps) => {
   const { settings } = useExportSettings();
   const [exporting, setExporting] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'completed' | 'error' | 'pending'>('all');
+  const listRef = useRef<HTMLDivElement>(null);
+  
   const completedCount = items.filter(item => item.status === 'completed').length;
   const errorCount = items.filter(item => item.status === 'error').length;
-  const isComplete = !isProcessing && currentIndex >= items.length;
+  const pendingCount = items.filter(item => item.status === 'pending').length;
+  const processingCount = items.filter(item => item.status === 'processing').length;
+  const isComplete = !isProcessing && currentIndex >= items.length && pendingCount === 0;
   
-  // Calculate progress based on expected count if provided, otherwise use uploaded count
   const totalTarget = expectedCount || items.length;
-  const progress = totalTarget > 0 ? (completedCount / totalTarget) * 100 : 0;
+  const progress = totalTarget > 0 ? ((completedCount + errorCount) / totalTarget) * 100 : 0;
   const remainingCount = totalTarget - completedCount;
 
-  // Get unique subject codes
+  // ETA calculation
+  const [eta, setEta] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isProcessing || !startTime || completedCount === 0) {
+      setEta(null);
+      return;
+    }
+    const elapsed = (Date.now() - startTime) / 1000;
+    const avgPerItem = elapsed / (completedCount + errorCount);
+    const remaining = (pendingCount + processingCount) * avgPerItem;
+    
+    if (remaining < 60) {
+      setEta(`~${Math.ceil(remaining)}s remaining`);
+    } else {
+      setEta(`~${Math.ceil(remaining / 60)}m remaining`);
+    }
+  }, [isProcessing, startTime, completedCount, errorCount, pendingCount, processingCount]);
+
+  // Auto-scroll to active item
+  useEffect(() => {
+    if (isProcessing && listRef.current) {
+      const activeItem = listRef.current.querySelector('[data-status="processing"]');
+      activeItem?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [currentIndex, isProcessing]);
+
   const subjectCodes = [...new Set(
     items
       .filter(item => item.status === 'completed' && item.subjectCode)
       .map(item => item.subjectCode!)
   )].sort();
+
+  const filteredItems = filter === 'all' 
+    ? items 
+    : items.filter(item => item.status === filter);
 
   const handleExportBatch = (filterSubject?: string) => {
     try {
@@ -89,7 +139,6 @@ const BatchProcessor = ({
         return;
       }
 
-      // Use the new formatter with custom settings
       formatBatchExport(settings, filterSubject ? itemsToExport : items, answerKey);
 
       toast({
@@ -113,31 +162,43 @@ const BatchProcessor = ({
   return (
     <Card className="p-6 bg-gradient-to-br from-primary/5 to-primary/10 border-2 border-primary/20">
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        {/* Header */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h3 className="text-lg font-semibold text-foreground">Batch Processing</h3>
             <p className="text-sm text-muted-foreground">
               Processing {items.length} answer sheet{items.length !== 1 ? 's' : ''}
+              {eta && isProcessing && (
+                <span className="ml-2 text-primary font-medium inline-flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> {eta}
+                </span>
+              )}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {/* Add More Button - Always show when not processing */}
             {!isProcessing && onAddMore && (
               <Button onClick={onAddMore} variant="outline" size="sm" className="gap-2">
                 <Plus className="h-4 w-4" />
-                Add More Sheets
+                Add More
               </Button>
             )}
             
-            {/* Process New Sheets Button - Show when there are pending sheets */}
             {!isProcessing && hasPendingSheets && onProcessNewSheets && (
               <Button onClick={onProcessNewSheets} variant="default" size="sm" className="gap-2">
                 <Play className="h-4 w-4" />
-                Process New Sheets
+                Process New
+              </Button>
+            )}
+
+            {/* Retry Failed Button */}
+            {!isProcessing && errorCount > 0 && onRetryFailed && (
+              <Button onClick={onRetryFailed} variant="outline" size="sm" className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10">
+                <RotateCcw className="h-4 w-4" />
+                Retry Failed ({errorCount})
               </Button>
             )}
             
-            {/* Export Button with Dropdown */}
+            {/* Export Button */}
             {isComplete && completedCount > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -185,19 +246,39 @@ const BatchProcessor = ({
               </DropdownMenu>
             )}
             
-            {/* Cancel Button */}
+            {/* Cancel with confirmation */}
             {isProcessing && onCancel && (
-              <Button onClick={onCancel} variant="outline" size="sm">
-                Cancel
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="text-destructive border-destructive/30">
+                    Cancel
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Cancel batch processing?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {completedCount} of {items.length} sheets have been processed. 
+                      Completed results will be kept, but remaining sheets will stop processing.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Continue Processing</AlertDialogCancel>
+                    <AlertDialogAction onClick={onCancel} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                      Stop Processing
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
         </div>
 
+        {/* Progress Bar */}
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">
-              {completedCount} of {totalTarget} students completed
+              {completedCount} of {totalTarget} completed
               {expectedCount && remainingCount > 0 && !isComplete && (
                 <span className="ml-2 text-primary font-medium">
                   ({remainingCount} remaining)
@@ -206,90 +287,146 @@ const BatchProcessor = ({
             </span>
             <span className="font-semibold text-foreground">{Math.min(Math.round(progress), 100)}%</span>
           </div>
-          <Progress value={Math.min(progress, 100)} className="h-2" />
+          <Progress value={Math.min(progress, 100)} className="h-2.5" />
           {expectedCount && items.length < expectedCount && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
-              {expectedCount - items.length} more answer sheet{expectedCount - items.length !== 1 ? 's' : ''} to upload
+              {expectedCount - items.length} more sheet{expectedCount - items.length !== 1 ? 's' : ''} to upload
             </p>
           )}
         </div>
 
-        {errorCount > 0 && (
-          <div className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
-            <XCircle className="h-4 w-4" />
-            {errorCount} error{errorCount !== 1 ? 's' : ''} occurred
+        {/* Status Summary Badges */}
+        {(completedCount > 0 || errorCount > 0) && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setFilter('all')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                filter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+            >
+              All ({items.length})
+            </button>
+            {completedCount > 0 && (
+              <button
+                onClick={() => setFilter('completed')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  filter === 'completed' ? 'bg-green-600 text-white' : 'bg-green-500/10 text-green-700 dark:text-green-400 hover:bg-green-500/20'
+                }`}
+              >
+                <CheckCircle className="h-3 w-3" /> {completedCount}
+              </button>
+            )}
+            {errorCount > 0 && (
+              <button
+                onClick={() => setFilter('error')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  filter === 'error' ? 'bg-red-600 text-white' : 'bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-500/20'
+                }`}
+              >
+                <XCircle className="h-3 w-3" /> {errorCount}
+              </button>
+            )}
+            {pendingCount > 0 && (
+              <button
+                onClick={() => setFilter('pending')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  filter === 'pending' ? 'bg-muted-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                <FileText className="h-3 w-3" /> {pendingCount}
+              </button>
+            )}
           </div>
         )}
 
-        <div className="max-h-64 overflow-y-auto space-y-2 mt-4">
-          {items.map((item, index) => (
-            <div
-              key={index}
-              className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
-                item.status === 'completed'
-                  ? 'bg-green-500/10 border-green-500/20'
-                  : item.status === 'error'
-                  ? 'bg-red-500/10 border-red-500/20'
-                  : item.status === 'processing'
-                  ? 'bg-blue-500/10 border-blue-500/20'
-                  : 'bg-muted/30 border-border'
-              }`}
-            >
-              <div className="mt-0.5 shrink-0">
-                {item.status === 'completed' && (
-                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-                )}
-                {item.status === 'error' && (
-                  <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                )}
-                {item.status === 'processing' && (
-                  <Loader2 className="h-5 w-5 text-blue-600 dark:text-blue-400 animate-spin" />
-                )}
-                {item.status === 'pending' && (
-                  <FileText className="h-5 w-5 text-muted-foreground" />
-                )}
-              </div>
+        {/* Items List */}
+        <div ref={listRef} className="max-h-72 overflow-y-auto space-y-2 mt-4 scroll-smooth">
+          {filteredItems.map((item, _filteredIndex) => {
+            const originalIndex = items.indexOf(item);
+            return (
+              <div
+                key={originalIndex}
+                data-status={item.status}
+                className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
+                  item.status === 'completed'
+                    ? 'bg-green-500/10 border-green-500/20'
+                    : item.status === 'error'
+                    ? 'bg-red-500/10 border-red-500/20'
+                    : item.status === 'processing'
+                    ? 'bg-blue-500/10 border-blue-500/20 ring-1 ring-blue-500/30'
+                    : 'bg-muted/30 border-border'
+                }`}
+              >
+                <div className="mt-0.5 shrink-0">
+                  {item.status === 'completed' && (
+                    <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  )}
+                  {item.status === 'error' && (
+                    <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                  )}
+                  {item.status === 'processing' && (
+                    <Loader2 className="h-5 w-5 text-blue-600 dark:text-blue-400 animate-spin" />
+                  )}
+                  {item.status === 'pending' && (
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                  )}
+                </div>
 
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
-                  {item.fileName}
-                </p>
-                
-                {item.status === 'completed' && (
-                  <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                    {item.rollNumber && (
-                      <p>Roll: <span className="font-mono">{item.rollNumber}</span></p>
-                    )}
-                    {item.subjectCode && (
-                      <p>Subject: <span className="font-mono">{item.subjectCode}</span></p>
-                    )}
-                    {item.score !== undefined && item.totalQuestions !== undefined && (
-                      <p>
-                        Score: <span className="font-semibold">
-                          {item.score}/{item.totalQuestions}
-                        </span>
-                        {item.accuracy !== undefined && (
-                          <span className="ml-2">({item.accuracy.toFixed(1)}%)</span>
-                        )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {item.fileName}
+                  </p>
+                  
+                  {item.status === 'completed' && (
+                    <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                      {item.rollNumber && (
+                        <p>Roll: <span className="font-mono">{item.rollNumber}</span></p>
+                      )}
+                      {item.subjectCode && (
+                        <p>Subject: <span className="font-mono">{item.subjectCode}</span></p>
+                      )}
+                      {item.score !== undefined && item.totalQuestions !== undefined && (
+                        <p>
+                          Score: <span className="font-semibold">
+                            {item.score}/{item.totalQuestions}
+                          </span>
+                          {item.accuracy !== undefined && (
+                            <span className="ml-2">({item.accuracy.toFixed(1)}%)</span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  {item.status === 'error' && (
+                    <div className="mt-1 space-y-1">
+                      <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        {item.error || 'Processing failed'}
                       </p>
-                    )}
-                  </div>
-                )}
-                
-                {item.status === 'error' && (
-                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                    {item.error || 'Processing failed'}
-                  </p>
-                )}
-                
-                {item.status === 'processing' && (
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                    Processing...
-                  </p>
-                )}
+                      {!isProcessing && onRetryItem && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-500/10 gap-1"
+                          onClick={() => onRetryItem(originalIndex)}
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          Retry
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  
+                  {item.status === 'processing' && (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 animate-pulse">
+                      Analyzing answer sheet...
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Completion Summary */}
