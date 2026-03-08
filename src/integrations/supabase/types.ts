@@ -79,6 +79,8 @@ export type Database = {
       }
       export_settings: {
         Row: {
+          accent_color: string | null
+          border_style: string | null
           created_at: string
           font_family: string | null
           footer_text: string | null
@@ -92,6 +94,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          accent_color?: string | null
+          border_style?: string | null
           created_at?: string
           font_family?: string | null
           footer_text?: string | null
@@ -105,6 +109,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          accent_color?: string | null
+          border_style?: string | null
           created_at?: string
           font_family?: string | null
           footer_text?: string | null
