@@ -438,15 +438,15 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
       <Card className="overflow-hidden bg-gradient-card border-2 transition-all hover:shadow-lg">
         <div className="p-6">
           <CardTitle className="text-2xl font-bold">Upload Answer Sheet</CardTitle>
-          <CardDescription>
+          <div className="text-sm text-muted-foreground">
             Take a photo or upload an image of the completed answer sheet
-            <div className="mt-2 text-xs text-muted-foreground space-y-1">
-              <p>✓ Accepted formats: JPG, JPEG, PNG (Max 10MB)</p>
-              <p>✓ Images are validated, compressed, and enhanced automatically</p>
-              <p>✓ Your images are processed securely and not stored permanently</p>
-              <p className="text-amber-600 dark:text-amber-400">⚠️ Do not upload sensitive personal documents unless necessary</p>
+            <div className="mt-2 text-xs space-y-1">
+              <span className="block">✓ Accepted formats: JPG, JPEG, PNG (Max 10MB)</span>
+              <span className="block">✓ Images are validated, compressed, and enhanced automatically</span>
+              <span className="block">✓ Your images are processed securely and not stored permanently</span>
+              <span className="block text-amber-600 dark:text-amber-400">⚠️ Do not upload sensitive personal documents unless necessary</span>
             </div>
-          </CardDescription>
+          </div>
         </div>
 
         {showCamera ? (
