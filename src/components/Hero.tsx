@@ -31,15 +31,6 @@ const Hero = ({ session }: { session: Session }) => {
           <Button 
             variant="outline" 
             size="sm"
-            onClick={() => navigate('/batch')}
-            className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
-          >
-            <Layers className="h-4 w-4 md:mr-2" />
-            <span className="hidden md:inline">Batch</span>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm"
             onClick={() => navigate('/history')}
             className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
           >
