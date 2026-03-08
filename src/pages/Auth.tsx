@@ -517,7 +517,7 @@ export default function AuthPage() {
 
                 <Button
                   onClick={handlePasswordAuth}
-                  disabled={loading || !email || !password || !captchaInput}
+                  disabled={loading || !email || !password || !captchaInput || !confirmPassword || password !== confirmPassword}
                   className="w-full gap-2"
                 >
                   {loading ? (
