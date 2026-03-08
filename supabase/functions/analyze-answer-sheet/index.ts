@@ -305,9 +305,12 @@ EXACTLY ${answerKey.length} answers. Every answer MUST be A-E. Do NOT return "?"
     const imageQuality = parsed.quality || "unknown";
     const qualityIssues = parsed.qualityIssues || [];
 
-    // If roll number detection was required but not found — soft-fail with warning
+    // Soft-fail warnings for missing roll number / subject code
     const rollNumberWarning = (detectRollNumber && !rollNumber) 
       ? "Roll number could not be detected from the answer sheet." 
+      : null;
+    const subjectCodeWarning = (detectSubjectCode && !subjectCode)
+      ? "Subject code could not be detected from the answer sheet."
       : null;
 
     // Process extracted answers
