@@ -528,8 +528,8 @@ const History = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                    {selectedEvaluation.extracted_answers.map((extracted, index) => {
-                      const correct = selectedEvaluation.correct_answers[index];
+                    {(selectedEvaluation.extracted_answers || []).map((extracted, index) => {
+                      const correct = (selectedEvaluation.correct_answers || [])[index];
                       const isCorrect = extracted === correct;
                       
                       return (
