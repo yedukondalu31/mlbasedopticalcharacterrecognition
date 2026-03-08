@@ -3,6 +3,7 @@ import * as React from "react";
 import { Upload, Image as ImageIcon, X, Camera, Crop } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import ImageCropper from "@/components/ImageCropper";
 
