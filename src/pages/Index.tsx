@@ -1,25 +1,24 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import { useState, useRef, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { Session } from "@supabase/supabase-js";
 import Hero from "@/components/Hero";
 import ImageUpload from "@/components/ImageUpload";
 import AnswerKeyForm from "@/components/AnswerKeyForm";
 import PrivacyNotice from "@/components/PrivacyNotice";
-import { BatchProcessingItem } from "@/components/BatchProcessor";
 import QuickApplyKey from "@/components/QuickApplyKey";
+import AuthGuard from "@/components/AuthGuard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Users, User, Layers, CheckCircle2 } from "lucide-react";
+import { Users, User, CheckCircle2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 // Lazy load heavy components
 const ResultsDashboard = lazy(() => import("@/components/ResultsDashboard"));
 const ExportSettings = lazy(() => import("@/components/ExportSettings"));
-const BatchProcessor = lazy(() => import("@/components/BatchProcessor"));
 
 export interface EvaluationResult {
   extractedAnswers: string[];
@@ -48,90 +47,28 @@ export interface EvaluationResult {
   };
 }
 
-const Index = () => {
-  const [session, setSession] = useState<Session | null>(null);
+const IndexContent = ({ session }: { session: Session }) => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [answerKey, setAnswerKey] = useState<string[]>([]);
   const [evaluationResult, setEvaluationResult] = useState<EvaluationResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBatchMode, setIsBatchMode] = useState(false);
-  const [batchImages, setBatchImages] = useState<{ file: File; dataUrl: string }[]>([]);
-  const [batchProcessing, setBatchProcessing] = useState<BatchProcessingItem[]>([]);
-  const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [expectedStudentCount, setExpectedStudentCount] = useState<number | null>(null);
-  const [isAppendMode, setIsAppendMode] = useState(false);
-  const [lastGridConfig, setLastGridConfig] = useState<{ rows: number; columns: number } | undefined>();
-  const [lastDetectRollNumber, setLastDetectRollNumber] = useState<boolean>(false);
-  const [lastDetectSubjectCode, setLastDetectSubjectCode] = useState<boolean>(false);
   const uploadSectionRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (!session) navigate('/auth');
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        if (!session) navigate('/auth');
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  if (!session) return null;
 
   const handleImageUpload = (imageUrl: string) => {
     setUploadedImage(imageUrl);
     setEvaluationResult(null);
-    setBatchImages([]);
-    setBatchProcessing([]);
     toast({
       title: "Image uploaded successfully",
       description: "Now set your answer key to begin evaluation",
     });
   };
 
-  const handleBatchUpload = (images: { file: File; dataUrl: string }[], append: boolean = false) => {
-    if (append && batchImages.length > 0) {
-      // Append to existing batch
-      setBatchImages(prev => [...prev, ...images]);
-      setBatchProcessing(prev => [
-        ...prev,
-        ...images.map(img => ({
-          fileName: img.file.name,
-          status: 'pending' as const,
-        }))
-      ]);
-      toast({
-        title: `Added ${images.length} more sheet${images.length !== 1 ? 's' : ''}`,
-        description: `Total: ${batchImages.length + images.length} answer sheets in this batch`,
-      });
-    } else {
-      // Start fresh batch
-      setBatchImages(images);
-      setUploadedImage(null);
-      setEvaluationResult(null);
-      setBatchProcessing(images.map(img => ({
-        fileName: img.file.name,
-        status: 'pending' as const,
-      })));
-    }
-  };
-
   const handleAnswerKeySubmit = (answers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean, detectSubjectCode?: boolean) => {
     setAnswerKey(answers);
-    // Save config for later use when adding more sheets
-    setLastGridConfig(gridConfig);
-    setLastDetectRollNumber(detectRollNumber || false);
-    setLastDetectSubjectCode(detectSubjectCode || false);
-    
-    if (batchImages.length > 0) {
-      processBatchAnswerSheets(answers, gridConfig, detectRollNumber, detectSubjectCode);
-    } else if (uploadedImage) {
+    if (uploadedImage) {
       processAnswerSheet(answers, gridConfig, detectRollNumber, detectSubjectCode);
     } else {
       toast({
@@ -141,46 +78,10 @@ const Index = () => {
     }
   };
 
-  // Handler for adding more sheets to the batch
-  const handleAddMoreSheets = () => {
-    setIsAppendMode(true);
-    toast({
-      title: "Add more sheets",
-      description: "Upload additional answer sheets to add to this batch",
-    });
-  };
-
-  // Handler for processing newly added pending sheets
-  const handleProcessNewSheets = () => {
-    if (answerKey.length === 0) {
-      toast({
-        title: "Answer key required",
-        description: "Please submit an answer key first",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Find the first pending sheet index
-    const firstPendingIndex = batchProcessing.findIndex(item => item.status === 'pending');
-    if (firstPendingIndex >= 0) {
-      processBatchAnswerSheets(answerKey, lastGridConfig, lastDetectRollNumber, lastDetectSubjectCode, firstPendingIndex);
-    }
-    setIsAppendMode(false);
-  };
-
-  // Check if there are pending sheets
-  const hasPendingSheets = batchProcessing.some(item => item.status === 'pending');
-
   const processAnswerSheet = async (correctAnswers: string[], gridConfig?: { rows: number; columns: number }, detectRollNumber?: boolean, detectSubjectCode?: boolean) => {
     setIsProcessing(true);
     
     try {
-      if (!session) {
-        throw new Error("Authentication required");
-      }
-
-      // Call the AI edge function to analyze the answer sheet
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-answer-sheet`,
         {
@@ -201,8 +102,6 @@ const Index = () => {
 
       if (!response.ok) {
         const error = await response.json();
-        
-        // Special handling for validation errors (400)
         if (response.status === 400) {
           toast({
             title: "Invalid Image",
@@ -212,7 +111,6 @@ const Index = () => {
           setIsProcessing(false);
           return;
         }
-        
         throw new Error(error.error || "Failed to analyze answer sheet");
       }
 
@@ -235,7 +133,7 @@ const Index = () => {
         metadata: result.metadata,
       };
       
-      // Upload image to storage bucket instead of storing base64 in database
+      // Upload image to storage
       let imageStorageUrl = '';
       try {
         const base64Data = uploadedImage!.split(',')[1];
@@ -245,31 +143,24 @@ const Index = () => {
           bytes[i] = binaryData.charCodeAt(i);
         }
         const blob = new Blob([bytes], { type: 'image/jpeg' });
-        
         const fileName = `${session.user.id}/${Date.now()}.jpg`;
         const { error: uploadError } = await supabase.storage
           .from('answer-sheets')
-          .upload(fileName, blob, {
-            contentType: 'image/jpeg',
-            upsert: false,
-          });
+          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
 
-        if (uploadError) {
-          throw uploadError;
+        if (!uploadError) {
+          const { data: signedUrlData } = await supabase.storage
+            .from('answer-sheets')
+            .createSignedUrl(fileName, 60 * 60 * 24 * 365);
+          imageStorageUrl = signedUrlData?.signedUrl || fileName;
+        } else {
+          imageStorageUrl = 'storage-upload-failed';
         }
-
-        // Get signed URL for private bucket
-        const { data: signedUrlData } = await supabase.storage
-          .from('answer-sheets')
-          .createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year expiry
-        
-        imageStorageUrl = signedUrlData?.signedUrl || fileName;
-      } catch (storageError) {
-        // Fallback: store a placeholder if storage fails
+      } catch {
         imageStorageUrl = 'storage-upload-failed';
       }
 
-      // Save evaluation to database with storage URL
+      // Save evaluation to database
       const { error: dbError } = await supabase
         .from('evaluations')
         .insert({
@@ -320,172 +211,17 @@ const Index = () => {
     }
   };
 
-  const CONCURRENCY = 3;
-
-  const processOneSheetSingle = async (
-    index: number,
-    correctAnswers: string[],
-    gridConfig?: { rows: number; columns: number },
-    detectRollNumber?: boolean,
-    detectSubjectCode?: boolean,
-  ): Promise<boolean> => {
-    setBatchProcessing(prev => prev.map((item, idx) => 
-      idx === index ? { ...item, status: 'processing' as const } : item
-    ));
-
-    try {
-      if (!session) throw new Error("Authentication required");
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-answer-sheet`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            image: batchImages[index].dataUrl,
-            answerKey: correctAnswers,
-            gridConfig,
-            detectRollNumber,
-            detectSubjectCode,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to analyze");
-      }
-
-      const result = await response.json();
-      
-      // Upload to storage (non-blocking)
-      let imageStorageUrl = 'pending';
-      try {
-        const base64Data = batchImages[index].dataUrl.split(',')[1];
-        const binaryData = atob(base64Data);
-        const bytes = new Uint8Array(binaryData.length);
-        for (let j = 0; j < binaryData.length; j++) {
-          bytes[j] = binaryData.charCodeAt(j);
-        }
-        const blob = new Blob([bytes], { type: 'image/jpeg' });
-        const fileName = `${session.user.id}/${Date.now()}-${index}.jpg`;
-        const { error: uploadError } = await supabase.storage
-          .from('answer-sheets')
-          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
-        if (!uploadError) {
-          const { data: signedUrlData } = await supabase.storage
-            .from('answer-sheets')
-            .createSignedUrl(fileName, 60 * 60 * 24 * 365);
-          imageStorageUrl = signedUrlData?.signedUrl || fileName;
-        } else {
-          imageStorageUrl = 'storage-upload-failed';
-        }
-      } catch {
-        imageStorageUrl = 'storage-upload-failed';
-      }
-
-      await supabase.from('evaluations').insert({
-        user_id: session.user.id,
-        image_url: imageStorageUrl,
-        answer_key: correctAnswers,
-        extracted_answers: result.extractedAnswers,
-        correct_answers: result.correctAnswers,
-        roll_number: result.rollNumber,
-        subject_code: result.subjectCode,
-        grid_rows: gridConfig?.rows,
-        grid_columns: gridConfig?.columns,
-        score: result.score,
-        total_questions: result.totalQuestions,
-        accuracy: result.accuracy,
-        confidence: result.confidence,
-        low_confidence_count: result.lowConfidenceCount,
-        detailed_results: result.detailedResults,
-      });
-
-      setBatchProcessing(prev => prev.map((item, idx) => 
-        idx === index ? { 
-          ...item, status: 'completed' as const,
-          rollNumber: result.rollNumber, subjectCode: result.subjectCode,
-          score: result.score, totalQuestions: result.totalQuestions,
-          accuracy: result.accuracy,
-        } : item
-      ));
-      return true;
-    } catch (error) {
-      setBatchProcessing(prev => prev.map((item, idx) => 
-        idx === index ? { 
-          ...item, status: 'error' as const,
-          error: error instanceof Error ? error.message : 'Processing failed'
-        } : item
-      ));
-      return false;
-    }
-  };
-
-  const processBatchAnswerSheets = async (
-    correctAnswers: string[], 
-    gridConfig?: { rows: number; columns: number }, 
-    detectRollNumber?: boolean, 
-    detectSubjectCode?: boolean,
-    startFromIndex: number = 0
-  ) => {
-    setIsProcessing(true);
-    setCurrentBatchIndex(startFromIndex);
-    
-    // Collect pending indices
-    const pendingIndices: number[] = [];
-    let alreadyCompleted = 0;
-    for (let i = startFromIndex; i < batchImages.length; i++) {
-      if (batchProcessing[i]?.status === 'completed') { alreadyCompleted++; continue; }
-      if (batchProcessing[i]?.status === 'error') continue;
-      pendingIndices.push(i);
-    }
-
-    let successCount = alreadyCompleted;
-
-    // Process in parallel chunks
-    for (let chunk = 0; chunk < pendingIndices.length; chunk += CONCURRENCY) {
-      const batch = pendingIndices.slice(chunk, chunk + CONCURRENCY);
-      setCurrentBatchIndex(batch[0]);
-      
-      const results = await Promise.all(
-        batch.map(i => processOneSheetSingle(i, correctAnswers, gridConfig, detectRollNumber, detectSubjectCode))
-      );
-      
-      successCount += results.filter(Boolean).length;
-    }
-
-    setIsProcessing(false);
-    setCurrentBatchIndex(batchImages.length);
-    setIsAppendMode(false);
-    
-    toast({
-      title: "Batch processing complete!",
-      description: `Successfully processed ${successCount} of ${batchImages.length} answer sheets`,
-    });
-  };
-
   const handleReset = () => {
     setUploadedImage(null);
     setAnswerKey([]);
     setEvaluationResult(null);
     setIsProcessing(false);
-    setBatchImages([]);
-    setBatchProcessing([]);
-    setCurrentBatchIndex(0);
-    setExpectedStudentCount(null);
-    setIsAppendMode(false);
-    setLastGridConfig(undefined);
-    setLastDetectRollNumber(false);
-    setLastDetectSubjectCode(false);
   };
 
   const toggleBatchMode = () => {
     setIsBatchMode(!isBatchMode);
     handleReset();
+    setExpectedStudentCount(null);
     toast({
       title: isBatchMode ? "Single mode enabled" : "Batch mode enabled",
       description: isBatchMode 
@@ -603,7 +339,6 @@ const Index = () => {
                   </p>
                 </div>
                 
-                {/* Confirmation Button */}
                 {expectedStudentCount && expectedStudentCount > 0 && (
                   <Button 
                     onClick={() => navigate('/batch', { state: { expectedCount: expectedStudentCount } })}
@@ -624,15 +359,12 @@ const Index = () => {
             <div ref={uploadSectionRef}>
               <ImageUpload 
                 onImageUpload={handleImageUpload}
-                onBatchUpload={handleBatchUpload}
                 currentImage={uploadedImage}
-                isBatchMode={isBatchMode}
-                appendMode={isAppendMode}
-                onAppendModeChange={setIsAppendMode}
+                isBatchMode={false}
               />
             </div>
 
-            {/* Quick Apply Saved Key - show when image uploaded but no answer key yet */}
+            {/* Quick Apply Saved Key */}
             {uploadedImage && answerKey.length === 0 && !isProcessing && (
               <QuickApplyKey
                 onApplyKey={handleAnswerKeySubmit}
@@ -662,5 +394,11 @@ const Index = () => {
     </div>
   );
 };
+
+const Index = () => (
+  <AuthGuard>
+    {(session) => <IndexContent session={session} />}
+  </AuthGuard>
+);
 
 export default Index;
