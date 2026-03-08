@@ -511,7 +511,7 @@ export default function AuthPage() {
 
                 <Button
                   onClick={handlePasswordAuth}
-                  disabled={loading || !email || !password || !captchaInput}
+                  disabled={loading || !email || !password || !captchaInput || isLockedOut}
                   className="w-full gap-2"
                 >
                   {loading ? (
@@ -519,7 +519,7 @@ export default function AuthPage() {
                   ) : (
                     <Lock className="h-4 w-4" />
                   )}
-                  Sign In
+                  {isLockedOut ? `Wait ${lockoutRemaining}s` : 'Sign In'}
                 </Button>
               </TabsContent>
 
