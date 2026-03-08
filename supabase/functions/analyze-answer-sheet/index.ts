@@ -130,38 +130,29 @@ SUBJECT CODE EXTRACTION:
 - DO NOT confuse with roll number
 ` : "";
 
-    const combinedPrompt = `You are an advanced OCR system for grid-based answer sheets. Perform ALL tasks in ONE pass:
+    const combinedPrompt = `You are a precision OCR engine specialized in handwritten grid-based OMR answer sheets.
 
-TASK 1 - VALIDATION: Is this an answer sheet? (grid boxes/bubbles, question numbers, answer options)
-TASK 2 - ANSWER EXTRACTION: Extract answers from the grid
-${detectRollNumber ? "TASK 3 - ROLL NUMBER: Extract the roll number" : ""}
-${detectSubjectCode ? `TASK ${detectRollNumber ? "4" : "3"} - SUBJECT CODE: Extract the subject code` : ""}
-
-ANSWER SHEET CONTEXT:
-- Total questions: ${answerKey.length}
-- Layout: ${gridInfo}
-- Answer format: Single letters (A, B, C, D, E) per cell
-${gridConfig ? `- Grid is ${gridConfig.rows}×${gridConfig.columns}, process row-by-row left to right` : ""}
+STRICT INSTRUCTIONS:
+1. First confirm this is an answer sheet with a grid of answer boxes/bubbles.
+2. The sheet has EXACTLY ${answerKey.length} questions. ${gridConfig ? `Arranged in a ${gridConfig.rows}×${gridConfig.columns} grid (${gridConfig.rows} rows, ${gridConfig.columns} columns). Read LEFT-TO-RIGHT, TOP-TO-BOTTOM. Question 1 starts at top-left.` : "Numbered sequentially."}
+3. Each cell contains a SINGLE handwritten letter: A, B, C, D, or E. Use "?" ONLY for truly empty/blank cells.
+4. For crossed-out or corrected answers, use the FINAL intended answer (the one NOT crossed out).
+5. Pay careful attention to distinguish similar letters: A vs D, B vs D, C vs G.
 ${rollNumberSection}${subjectCodeSection}
 
-GRID EXTRACTION PROTOCOL:
-1. Identify grid boundaries and cell positions
-2. Map each cell to its question number
-3. Extract the answer from each cell (handle corrections, partial marks)
-4. For each answer, assess confidence: "high" (90%+), "medium" (70-89%), "low" (<70%)
-5. Use "?" for empty/unattempted boxes
-
-Return ONLY this JSON:
+OUTPUT FORMAT (strict JSON, no markdown):
 {
-  "isAnswerSheet": true/false,
-  "quality": "good" | "fair" | "poor",
+  "isAnswerSheet": true,
+  "quality": "good"|"fair"|"poor",
   "qualityIssues": [],
-  "answers": ["A", "B", ...],
-  "confidence": ["high", "medium", ...],
-  "notes": ["clear", "corrected", ...]${detectRollNumber ? ',\n  "rollNumber": "ABC1234567" or null' : ""}${detectSubjectCode ? ',\n  "subjectCode": "CS101" or null' : ""}
+  "answers": [${answerKey.map((_, i) => `"Q${i+1}"`).slice(0, 3).join(", ")}, ...],
+  "confidence": ["high"|"medium"|"low", ...]${detectRollNumber ? ',\n  "rollNumber": "string or null"' : ""}${detectSubjectCode ? ',\n  "subjectCode": "string or null"' : ""}
 }
 
-CRITICAL: Array length must be exactly ${answerKey.length}. Return ONLY valid JSON.`;
+CRITICAL RULES:
+- "answers" array MUST have EXACTLY ${answerKey.length} elements.
+- Each answer MUST be a single uppercase letter (A-E) or "?".
+- Return ONLY the JSON object, nothing else.`;
 
     const aiResponse = await callAI(LOVABLE_API_KEY, "google/gemini-2.5-flash", combinedPrompt, image);
 
