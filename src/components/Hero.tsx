@@ -1,4 +1,4 @@
-import { ScanSearch, Zap, CheckCircle, TrendingUp, LogOut, History, Key, Layers } from "lucide-react";
+import { ScanSearch, Zap, CheckCircle, TrendingUp, LogOut, History, Key } from "lucide-react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -27,15 +27,6 @@ const Hero = ({ session }: { session: Session }) => {
           >
             <Key className="h-4 w-4 md:mr-2" />
             <span className="hidden md:inline">Keys</span>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => navigate('/batch')}
-            className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
-          >
-            <Layers className="h-4 w-4 md:mr-2" />
-            <span className="hidden md:inline">Batch</span>
           </Button>
           <Button 
             variant="outline" 
