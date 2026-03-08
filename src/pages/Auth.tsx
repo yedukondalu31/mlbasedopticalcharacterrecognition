@@ -97,6 +97,30 @@ export default function AuthPage() {
   const [captcha, setCaptcha] = useState(() => generateCaptcha());
   const [captchaInput, setCaptchaInput] = useState('');
 
+  // Rate limiting state
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
+
+  const isLockedOut = lockoutUntil !== null && Date.now() < lockoutUntil;
+
+  useEffect(() => {
+    if (!lockoutUntil) return;
+    const tick = () => {
+      const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockoutUntil(null);
+        setLockoutRemaining(0);
+        setFailedAttempts(0);
+      } else {
+        setLockoutRemaining(remaining);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lockoutUntil]);
+
   const refreshCaptcha = useCallback(() => {
     setCaptcha(generateCaptcha());
     setCaptchaInput('');
