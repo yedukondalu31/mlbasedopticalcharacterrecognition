@@ -97,6 +97,30 @@ export default function AuthPage() {
   const [captcha, setCaptcha] = useState(() => generateCaptcha());
   const [captchaInput, setCaptchaInput] = useState('');
 
+  // Rate limiting state
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
+
+  const isLockedOut = lockoutUntil !== null && Date.now() < lockoutUntil;
+
+  useEffect(() => {
+    if (!lockoutUntil) return;
+    const tick = () => {
+      const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockoutUntil(null);
+        setLockoutRemaining(0);
+        setFailedAttempts(0);
+      } else {
+        setLockoutRemaining(remaining);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lockoutUntil]);
+
   const refreshCaptcha = useCallback(() => {
     setCaptcha(generateCaptcha());
     setCaptchaInput('');
@@ -156,6 +180,15 @@ export default function AuthPage() {
   };
 
   const handlePasswordAuth = async () => {
+    if (isLockedOut) {
+      toast({
+        title: 'Too many attempts',
+        description: `Please wait ${lockoutRemaining} seconds before trying again`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!validateEmail(email)) return;
 
     const passwordResult = passwordSchema.safeParse(password);
@@ -219,6 +252,16 @@ export default function AuthPage() {
         description: message,
         variant: 'destructive',
       });
+      const newFailedAttempts = failedAttempts + 1;
+      setFailedAttempts(newFailedAttempts);
+      if (newFailedAttempts >= 3) {
+        setLockoutUntil(Date.now() + 30000);
+        toast({
+          title: 'Too many failed attempts',
+          description: 'Login disabled for 30 seconds',
+          variant: 'destructive',
+        });
+      }
       refreshCaptcha();
     } finally {
       setLoading(false);
@@ -468,7 +511,7 @@ export default function AuthPage() {
 
                 <Button
                   onClick={handlePasswordAuth}
-                  disabled={loading || !email || !password || !captchaInput}
+                  disabled={loading || !email || !password || !captchaInput || isLockedOut}
                   className="w-full gap-2"
                 >
                   {loading ? (
@@ -476,7 +519,7 @@ export default function AuthPage() {
                   ) : (
                     <Lock className="h-4 w-4" />
                   )}
-                  Sign In
+                  {isLockedOut ? `Wait ${lockoutRemaining}s` : 'Sign In'}
                 </Button>
               </TabsContent>
 
@@ -527,7 +570,7 @@ export default function AuthPage() {
 
                 <Button
                   onClick={handlePasswordAuth}
-                  disabled={loading || !email || !password || !captchaInput || !confirmPassword || password !== confirmPassword}
+                  disabled={loading || !email || !password || !captchaInput || !confirmPassword || password !== confirmPassword || isLockedOut}
                   className="w-full gap-2"
                 >
                   {loading ? (
@@ -535,7 +578,7 @@ export default function AuthPage() {
                   ) : (
                     <Mail className="h-4 w-4" />
                   )}
-                  Create Account
+                  {isLockedOut ? `Wait ${lockoutRemaining}s` : 'Create Account'}
                 </Button>
               </TabsContent>
             </Tabs>
