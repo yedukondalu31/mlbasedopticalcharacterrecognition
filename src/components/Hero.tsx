@@ -16,8 +16,8 @@ const Hero = ({ session }: { session: Session }) => {
     <header className="relative overflow-hidden bg-gradient-hero text-primary-foreground">
       <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAxOGMzLjMxNCAwIDYgMi42ODYgNiA2cy0yLjY4NiA2LTYgNi02LTIuNjg2LTYtNiAyLjY4Ni02IDYtNiIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMSkiLz48L2c+PC9zdmc+')] opacity-20"></div>
       
-      <div className="container relative mx-auto px-4 py-8 md:py-16">
-        <div className="absolute top-4 right-4 flex gap-2 flex-wrap justify-end">
+      <div className="container relative mx-auto px-4 py-4 md:py-16">
+        <nav className="flex gap-2 justify-end mb-4 md:mb-0 md:absolute md:top-4 md:right-4 flex-wrap">
           <ThemeToggle />
           <Button 
             variant="outline" 
@@ -25,8 +25,8 @@ const Hero = ({ session }: { session: Session }) => {
             onClick={() => navigate('/answer-keys')}
             className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
           >
-            <Key className="h-4 w-4 mr-2" />
-            Keys
+            <Key className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">Keys</span>
           </Button>
           <Button 
             variant="outline" 
@@ -34,8 +34,8 @@ const Hero = ({ session }: { session: Session }) => {
             onClick={() => navigate('/history')}
             className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
           >
-            <History className="h-4 w-4 mr-2" />
-            History
+            <History className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">History</span>
           </Button>
           <Button 
             variant="outline" 
@@ -43,10 +43,10 @@ const Hero = ({ session }: { session: Session }) => {
             onClick={handleLogout}
             className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
           >
-            <LogOut className="h-4 w-4 mr-2" />
-            Logout
+            <LogOut className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">Logout</span>
           </Button>
-        </div>
+        </nav>
         <div className="mx-auto max-w-4xl text-center space-y-4 md:space-y-8">
           <div className="hidden md:inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 backdrop-blur-sm">
             <ScanSearch className="h-5 w-5" />
