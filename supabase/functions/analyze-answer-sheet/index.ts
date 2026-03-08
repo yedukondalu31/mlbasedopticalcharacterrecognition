@@ -8,7 +8,7 @@ const corsHeaders = {
 // In-memory rate limiting
 const requestLog = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60000;
-const MAX_REQUESTS_PER_MINUTE = 30; // Increased for parallel batch
+const MAX_REQUESTS_PER_MINUTE = 60; // Higher limit for parallel batch processing
 
 function checkRateLimit(identifier: string): { allowed: boolean; remaining: number; resetIn: number } {
   const now = Date.now();
