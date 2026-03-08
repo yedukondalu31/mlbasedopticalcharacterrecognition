@@ -45,26 +45,33 @@ const History = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let mounted = true;
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (!session) navigate('/auth');
+      if (mounted) {
+        setSession(session);
+        if (!session) navigate('/auth');
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setSession(session);
-        if (!session) navigate('/auth');
+        if (mounted) {
+          setSession(session);
+          if (!session) navigate('/auth');
+        }
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, [navigate]);
 
+  const sessionUserId = session?.user?.id;
+
   useEffect(() => {
-    if (session) {
+    if (sessionUserId) {
       fetchEvaluations();
     }
-  }, [session]);
+  }, [sessionUserId]);
 
   useEffect(() => {
     applyFilters();
