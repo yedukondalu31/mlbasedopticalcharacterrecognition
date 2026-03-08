@@ -38,7 +38,8 @@ export class ExcelFormatter {
     columnWidths?: { wch: number }[],
     includeHeader: boolean = true
   ) {
-    const ws = this.wb.addWorksheet(sheetName.substring(0, 31));
+    const safeName = sheetName.replace(/[\/\\?*\[\]]/g, '_').substring(0, 31);
+    const ws = this.wb.addWorksheet(safeName);
 
     if (data.length === 0) return;
 
