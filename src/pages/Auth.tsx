@@ -523,7 +523,7 @@ export default function AuthPage() {
                   )}
                 </div>
 
-                <CaptchaField />
+                <CaptchaField question={captcha.question} captchaInput={captchaInput} onCaptchaInputChange={setCaptchaInput} onRefresh={refreshCaptcha} loading={loading} />
 
                 <Button
                   onClick={handlePasswordAuth}
