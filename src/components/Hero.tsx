@@ -46,9 +46,9 @@ const Hero = ({ session }: { session: Session }) => {
           </Button>
         </div>
         <div className="mx-auto max-w-4xl text-center space-y-4 md:space-y-8">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 md:px-4 md:py-2 backdrop-blur-sm">
-            <ScanSearch className="h-4 w-4 md:h-5 md:w-5" />
-            <span className="text-xs md:text-sm font-medium">AI-Powered OCR</span>
+          <div className="hidden md:inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 backdrop-blur-sm">
+            <ScanSearch className="h-5 w-5" />
+            <span className="text-sm font-medium">AI-Powered OCR</span>
           </div>
           
           <h1 className="text-xl md:text-3xl lg:text-5xl font-bold leading-tight px-2">
