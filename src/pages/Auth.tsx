@@ -252,6 +252,16 @@ export default function AuthPage() {
         description: message,
         variant: 'destructive',
       });
+      const newFailedAttempts = failedAttempts + 1;
+      setFailedAttempts(newFailedAttempts);
+      if (newFailedAttempts >= 3) {
+        setLockoutUntil(Date.now() + 30000);
+        toast({
+          title: 'Too many failed attempts',
+          description: 'Login disabled for 30 seconds',
+          variant: 'destructive',
+        });
+      }
       refreshCaptcha();
     } finally {
       setLoading(false);
