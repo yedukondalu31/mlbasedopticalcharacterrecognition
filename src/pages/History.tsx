@@ -40,6 +40,8 @@ const History = () => {
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedEvaluation, setSelectedEvaluation] = useState<Evaluation | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
