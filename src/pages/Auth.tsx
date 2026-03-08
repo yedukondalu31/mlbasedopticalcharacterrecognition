@@ -570,7 +570,7 @@ export default function AuthPage() {
 
                 <Button
                   onClick={handlePasswordAuth}
-                  disabled={loading || !email || !password || !captchaInput || !confirmPassword || password !== confirmPassword}
+                  disabled={loading || !email || !password || !captchaInput || !confirmPassword || password !== confirmPassword || isLockedOut}
                   className="w-full gap-2"
                 >
                   {loading ? (
@@ -578,7 +578,7 @@ export default function AuthPage() {
                   ) : (
                     <Mail className="h-4 w-4" />
                   )}
-                  Create Account
+                  {isLockedOut ? `Wait ${lockoutRemaining}s` : 'Create Account'}
                 </Button>
               </TabsContent>
             </Tabs>
