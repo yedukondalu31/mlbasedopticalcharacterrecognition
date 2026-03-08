@@ -115,6 +115,16 @@ const IndexContent = ({ session }: { session: Session }) => {
       }
 
       const result = await response.json();
+
+      // Show soft-fail warnings for roll number / subject code
+      const warnings = [result.rollNumberWarning, result.subjectCodeWarning].filter(Boolean);
+      if (warnings.length > 0) {
+        toast({
+          title: "Detection Warning",
+          description: warnings.join(" "),
+          variant: "destructive",
+        });
+      }
       
       const evaluationResult: EvaluationResult = {
         extractedAnswers: result.extractedAnswers,
