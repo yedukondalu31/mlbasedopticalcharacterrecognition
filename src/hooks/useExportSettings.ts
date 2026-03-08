@@ -74,10 +74,12 @@ export const useExportSettings = () => {
         school_name: newSettings.schoolName,
         school_logo_url: newSettings.schoolLogoUrl,
         header_color: newSettings.headerColor,
+        accent_color: newSettings.accentColor || '#3b82f6',
         font_family: newSettings.fontFamily,
         include_logo: newSettings.includeLogo,
         include_header: newSettings.includeHeader,
         footer_text: newSettings.footerText,
+        border_style: newSettings.borderStyle || 'thin',
       };
 
       const { error } = await supabase
