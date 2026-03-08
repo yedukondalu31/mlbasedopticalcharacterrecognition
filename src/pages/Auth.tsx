@@ -180,6 +180,15 @@ export default function AuthPage() {
   };
 
   const handlePasswordAuth = async () => {
+    if (isLockedOut) {
+      toast({
+        title: 'Too many attempts',
+        description: `Please wait ${lockoutRemaining} seconds before trying again`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!validateEmail(email)) return;
 
     const passwordResult = passwordSchema.safeParse(password);
