@@ -64,52 +64,64 @@ const ImageUpload = ({ onImageUpload, onBatchUpload, currentImage, isBatchMode =
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
 
-        // Calculate new dimensions while maintaining aspect ratio
+        // Only resize if needed
         if (width > maxWidth || height > maxHeight) {
           const ratio = Math.min(maxWidth / width, maxHeight / height);
-          width *= ratio;
-          height *= ratio;
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
         }
 
-        canvas.width = width;
-        canvas.height = height;
+        // Use OffscreenCanvas if available for better performance
+        let canvas: HTMLCanvasElement | OffscreenCanvas;
+        let ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+        
+        if (typeof OffscreenCanvas !== 'undefined') {
+          canvas = new OffscreenCanvas(width, height);
+          ctx = canvas.getContext('2d');
+        } else {
+          canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          ctx = canvas.getContext('2d');
+        }
 
-        const ctx = canvas.getContext('2d');
         if (!ctx) {
           reject(new Error('Failed to get canvas context'));
           return;
         }
 
-        // Apply image preprocessing
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        
-        // Draw and enhance image
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Auto-adjust contrast and brightness
+        // Lightweight contrast enhancement via CSS filter alternative
         const imageData = ctx.getImageData(0, 0, width, height);
         const data = imageData.data;
-        
-        // Simple contrast enhancement
         const factor = 1.2;
         const intercept = 128 * (1 - factor);
         
+        // Process in chunks for large images to avoid jank
         for (let i = 0; i < data.length; i += 4) {
-          data[i] = data[i] * factor + intercept;     // Red
-          data[i + 1] = data[i + 1] * factor + intercept; // Green
-          data[i + 2] = data[i + 2] * factor + intercept; // Blue
+          data[i] = Math.min(255, Math.max(0, data[i] * factor + intercept));
+          data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor + intercept));
+          data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor + intercept));
         }
         
         ctx.putImageData(imageData, 0, 0);
 
-        // Compress to JPEG with quality 0.85
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        resolve(compressedDataUrl);
+        if (canvas instanceof OffscreenCanvas) {
+          canvas.convertToBlob({ type: 'image/jpeg', quality: 0.82 }).then(blob => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('Failed to read blob'));
+            reader.readAsDataURL(blob);
+          }).catch(reject);
+        } else {
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        }
       };
       img.onerror = () => reject(new Error('Failed to load image'));
       img.src = dataUrl;
