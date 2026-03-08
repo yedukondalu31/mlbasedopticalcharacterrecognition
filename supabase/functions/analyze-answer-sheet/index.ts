@@ -40,10 +40,12 @@ async function callAI(apiKey: string, model: string, prompt: string, imageUrl: s
           role: "user",
           content: [
             { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: imageUrl } },
+            { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
           ],
         },
       ],
+      temperature: 0.1,
+      response_format: { type: "json_object" },
     }),
   });
 
