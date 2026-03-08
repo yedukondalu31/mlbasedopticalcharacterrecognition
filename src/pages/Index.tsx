@@ -505,7 +505,9 @@ const Index = () => {
         
         {/* Export Settings */}
         <div className="flex justify-end">
-          <ExportSettings />
+          <Suspense fallback={null}>
+            <ExportSettings />
+          </Suspense>
         </div>
         
         {/* Processing Mode Selector */}
