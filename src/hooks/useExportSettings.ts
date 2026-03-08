@@ -7,10 +7,12 @@ export interface ExportSettings {
   schoolName?: string;
   schoolLogoUrl?: string;
   headerColor: string;
+  accentColor?: string;
   fontFamily: string;
   includeLogo: boolean;
   includeHeader: boolean;
   footerText?: string;
+  borderStyle?: 'thin' | 'medium' | 'thick';
 }
 
 const DEFAULT_SETTINGS: ExportSettings = {
@@ -43,10 +45,12 @@ export const useExportSettings = () => {
           schoolName: data.school_name || undefined,
           schoolLogoUrl: data.school_logo_url || undefined,
           headerColor: data.header_color || DEFAULT_SETTINGS.headerColor,
+          accentColor: (data as any).accent_color || '#3b82f6',
           fontFamily: data.font_family || DEFAULT_SETTINGS.fontFamily,
           includeLogo: data.include_logo ?? DEFAULT_SETTINGS.includeLogo,
           includeHeader: data.include_header ?? DEFAULT_SETTINGS.includeHeader,
           footerText: data.footer_text || undefined,
+          borderStyle: (data as any).border_style || 'thin',
         });
       }
     } catch (error) {
@@ -70,10 +74,12 @@ export const useExportSettings = () => {
         school_name: newSettings.schoolName,
         school_logo_url: newSettings.schoolLogoUrl,
         header_color: newSettings.headerColor,
+        accent_color: newSettings.accentColor || '#3b82f6',
         font_family: newSettings.fontFamily,
         include_logo: newSettings.includeLogo,
         include_header: newSettings.includeHeader,
         footer_text: newSettings.footerText,
+        border_style: newSettings.borderStyle || 'thin',
       };
 
       const { error } = await supabase
