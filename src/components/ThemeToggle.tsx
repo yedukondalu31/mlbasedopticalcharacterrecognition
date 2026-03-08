@@ -40,8 +40,8 @@ const ThemeToggle = () => {
       onClick={() => setIsDark(!isDark)}
       className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
     >
-      {isDark ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
-      {isDark ? "Light" : "Dark"}
+      {isDark ? <Sun className="h-4 w-4 md:mr-2" /> : <Moon className="h-4 w-4 md:mr-2" />}
+      <span className="hidden md:inline">{isDark ? "Light" : "Dark"}</span>
     </Button>
   );
 };
