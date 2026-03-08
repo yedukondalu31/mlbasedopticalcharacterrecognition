@@ -45,10 +45,12 @@ export const useExportSettings = () => {
           schoolName: data.school_name || undefined,
           schoolLogoUrl: data.school_logo_url || undefined,
           headerColor: data.header_color || DEFAULT_SETTINGS.headerColor,
+          accentColor: (data as any).accent_color || '#3b82f6',
           fontFamily: data.font_family || DEFAULT_SETTINGS.fontFamily,
           includeLogo: data.include_logo ?? DEFAULT_SETTINGS.includeLogo,
           includeHeader: data.include_header ?? DEFAULT_SETTINGS.includeHeader,
           footerText: data.footer_text || undefined,
+          borderStyle: (data as any).border_style || 'thin',
         });
       }
     } catch (error) {
