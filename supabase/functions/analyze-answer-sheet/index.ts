@@ -183,7 +183,6 @@ CRITICAL RULES:
         throw new Error("No JSON found");
       }
     } catch (parseError) {
-      // Fallback: try array extraction
       try {
         const arrayMatch = aiResponse.match(/\[[\s\S]*?\]/);
         if (arrayMatch) {
@@ -196,8 +195,7 @@ CRITICAL RULES:
           };
         } else {
           parsed = {
-            isAnswerSheet: true,
-            quality: "unknown",
+            isAnswerSheet: true, quality: "unknown",
             answers: Array(answerKey.length).fill("?"),
             confidence: Array(answerKey.length).fill("low"),
             notes: Array(answerKey.length).fill("parsing failed"),
@@ -205,12 +203,66 @@ CRITICAL RULES:
         }
       } catch {
         parsed = {
-          isAnswerSheet: true,
-          quality: "unknown",
+          isAnswerSheet: true, quality: "unknown",
           answers: Array(answerKey.length).fill("?"),
           confidence: Array(answerKey.length).fill("low"),
           notes: Array(answerKey.length).fill("parsing failed"),
         };
+      }
+    }
+
+    // === VERIFICATION PASS for dim/poor quality or high uncertainty ===
+    const isDimOrPoor = parsed.brightnessLevel === "dim" || parsed.brightnessLevel === "very_dim" || parsed.quality === "poor";
+    const lowConfAnswers = (parsed.confidence || []).filter((c: string) => c === "low" || c === "medium");
+    const uncertaintyRatio = parsed.answers ? lowConfAnswers.length / parsed.answers.length : 0;
+    
+    if (isDimOrPoor || uncertaintyRatio > 0.3) {
+      // Re-analyze with a stronger model for verification
+      const verifyPrompt = `You are verifying OCR results from a dim/low-quality answer sheet image. A previous pass extracted these answers but had low confidence.
+
+Previous extraction: ${JSON.stringify(parsed.answers || [])}
+Previous quality assessment: ${parsed.quality}, brightness: ${parsed.brightnessLevel || "unknown"}
+
+RE-EXAMINE the image carefully. The image may be dim, faded, or poorly lit.
+- Look for ANY faint pencil marks, even very light ones
+- Increase contrast sensitivity mentally — faint gray marks ARE valid answers
+- There are EXACTLY ${answerKey.length} questions${gridConfig ? ` in a ${gridConfig.rows}×${gridConfig.columns} grid` : ""}
+
+For each question, either confirm the previous answer or provide a corrected one.
+Return JSON only:
+{
+  "answers": ["A", "B", ...],
+  "confidence": ["high"|"medium"|"low", ...],
+  "corrections": [{"q": 1, "from": "?", "to": "B", "reason": "faint mark visible"}]
+}
+
+EXACTLY ${answerKey.length} answers required. Prefer best-guess letter over "?".`;
+
+      try {
+        const verifyResponse = await callAI(LOVABLE_API_KEY, "google/gemini-2.5-pro", verifyPrompt, image);
+        const verifyMatch = verifyResponse.match(/\{[\s\S]*\}/);
+        if (verifyMatch) {
+          const verified = JSON.parse(verifyMatch[0]);
+          if (verified.answers && Array.isArray(verified.answers) && verified.answers.length === answerKey.length) {
+            // Merge: prefer verified answers where original had low confidence
+            parsed.answers = parsed.answers.map((orig: string, i: number) => {
+              const origConf = (parsed.confidence || [])[i] || "unknown";
+              const verifiedAnswer = verified.answers[i];
+              // Use verified answer if original was uncertain or "?"
+              if (orig === "?" && verifiedAnswer !== "?") return verifiedAnswer;
+              if (origConf === "low" && verifiedAnswer !== "?") return verifiedAnswer;
+              return orig;
+            });
+            // Update confidence from verification
+            if (verified.confidence) {
+              parsed.confidence = verified.confidence;
+            }
+            parsed.verificationApplied = true;
+            parsed.corrections = verified.corrections || [];
+          }
+        }
+      } catch (verifyError) {
+        console.error("Verification pass failed, using original results:", verifyError);
       }
     }
 
