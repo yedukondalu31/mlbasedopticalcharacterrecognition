@@ -8,8 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Search, Filter, Eye, Calendar, FileText } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ArrowLeft, Search, Filter, Eye, Calendar, FileText, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -38,6 +40,8 @@ const History = () => {
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedEvaluation, setSelectedEvaluation] = useState<Evaluation | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -128,6 +132,53 @@ const History = () => {
   const handleViewDetails = (evaluation: Evaluation) => {
     setSelectedEvaluation(evaluation);
     setDialogOpen(true);
+  };
+
+  const handleDeleteSingle = async (id: string) => {
+    try {
+      setDeleting(true);
+      const { error } = await supabase.from('evaluations').delete().eq('id', id);
+      if (error) throw error;
+      setEvaluations(prev => prev.filter(e => e.id !== id));
+      setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+      toast({ title: "Deleted", description: "Evaluation removed successfully" });
+    } catch {
+      toast({ title: "Error", description: "Failed to delete evaluation", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      setDeleting(true);
+      const { error } = await supabase.from('evaluations').delete().in('id', Array.from(selectedIds));
+      if (error) throw error;
+      setEvaluations(prev => prev.filter(e => !selectedIds.has(e.id)));
+      setSelectedIds(new Set());
+      toast({ title: "Deleted", description: `${selectedIds.size} evaluation(s) removed` });
+    } catch {
+      toast({ title: "Error", description: "Failed to delete evaluations", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredEvaluations.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredEvaluations.map(e => e.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
   };
 
   const getConfidenceBadge = (confidence: string | null) => {
@@ -247,10 +298,34 @@ const History = () => {
         {/* Results Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Evaluations</CardTitle>
-            <CardDescription>
-              {loading ? "Loading..." : `Showing ${filteredEvaluations.length} of ${evaluations.length} evaluations`}
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Evaluations</CardTitle>
+                <CardDescription>
+                  {loading ? "Loading..." : `Showing ${filteredEvaluations.length} of ${evaluations.length} evaluations`}
+                </CardDescription>
+              </div>
+              {selectedIds.size > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" disabled={deleting}>
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete {selectedIds.size} selected
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete {selectedIds.size} evaluation(s)?</AlertDialogTitle>
+                      <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -265,6 +340,12 @@ const History = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={selectedIds.size === filteredEvaluations.length && filteredEvaluations.length > 0}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Roll Number</TableHead>
                       <TableHead>Subject</TableHead>
@@ -277,6 +358,12 @@ const History = () => {
                   <TableBody>
                     {filteredEvaluations.map((evaluation) => (
                       <TableRow key={evaluation.id}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedIds.has(evaluation.id)}
+                            onCheckedChange={() => toggleSelect(evaluation.id)}
+                          />
+                        </TableCell>
                         <TableCell className="text-sm">
                           {format(new Date(evaluation.created_at), 'MMM dd, yyyy HH:mm')}
                         </TableCell>
@@ -298,14 +385,34 @@ const History = () => {
                           {getConfidenceBadge(evaluation.confidence)}
                         </TableCell>
                         <TableCell>
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            onClick={() => handleViewDetails(evaluation)}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
+                              onClick={() => handleViewDetails(evaluation)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={deleting}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete this evaluation?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    {evaluation.roll_number ? `Evaluation for ${evaluation.roll_number} will be permanently deleted.` : "This evaluation will be permanently deleted."}
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteSingle(evaluation.id)}>Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
