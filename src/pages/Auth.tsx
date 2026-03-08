@@ -11,7 +11,7 @@ import { Mail, Loader2, Lock, ArrowLeft, RefreshCw, ShieldCheck } from 'lucide-r
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Please enter a valid email address');
-const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
+const passwordSchema = z.string().min(8, 'Password must be at least 8 characters');
 
 type AuthStep = 'credentials' | 'forgot-password' | 'reset-password';
 
@@ -127,6 +127,15 @@ export default function AuthPage() {
     }
 
     if (!validateCaptcha()) return;
+
+    if (authMode === 'signup' && password !== confirmPassword) {
+      toast({
+        title: 'Passwords do not match',
+        description: 'Please make sure both passwords are the same',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -338,7 +347,7 @@ export default function AuthPage() {
                   disabled={loading}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Must be at least 6 characters
+                  Must be at least 8 characters
                 </p>
               </div>
 
@@ -485,15 +494,30 @@ export default function AuthPage() {
                     disabled={loading}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Must be at least 6 characters
+                    Must be at least 8 characters
                   </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-confirm-password">Confirm Password</Label>
+                  <Input
+                    id="signup-confirm-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={loading}
+                  />
+                  {confirmPassword && password !== confirmPassword && (
+                    <p className="text-xs text-red-500">Passwords do not match</p>
+                  )}
                 </div>
 
                 <CaptchaField />
 
                 <Button
                   onClick={handlePasswordAuth}
-                  disabled={loading || !email || !password || !captchaInput}
+                  disabled={loading || !email || !password || !captchaInput || !confirmPassword || password !== confirmPassword}
                   className="w-full gap-2"
                 >
                   {loading ? (
