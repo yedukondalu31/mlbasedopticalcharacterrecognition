@@ -182,7 +182,6 @@ const BatchUpload = () => {
 
   const hasPendingSheets = batchProcessing.some(item => item.status === 'pending');
 
-  const tokenRef = useRef<string | null>(null);
 
   const refreshToken = async () => {
     const { data: { session: freshSession } } = await supabase.auth.getSession();
