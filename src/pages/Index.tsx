@@ -1,13 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { Session } from "@supabase/supabase-js";
 import Hero from "@/components/Hero";
 import ImageUpload from "@/components/ImageUpload";
 import AnswerKeyForm from "@/components/AnswerKeyForm";
-import ResultsDashboard from "@/components/ResultsDashboard";
 import PrivacyNotice from "@/components/PrivacyNotice";
-import BatchProcessor, { BatchProcessingItem } from "@/components/BatchProcessor";
-import ExportSettings from "@/components/ExportSettings";
+import { BatchProcessingItem } from "@/components/BatchProcessor";
 import QuickApplyKey from "@/components/QuickApplyKey";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,6 +15,11 @@ import { Label } from "@/components/ui/label";
 import { Users, User, Layers, CheckCircle2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+
+// Lazy load heavy components
+const ResultsDashboard = lazy(() => import("@/components/ResultsDashboard"));
+const ExportSettings = lazy(() => import("@/components/ExportSettings"));
+const BatchProcessor = lazy(() => import("@/components/BatchProcessor"));
 
 export interface EvaluationResult {
   extractedAnswers: string[];
