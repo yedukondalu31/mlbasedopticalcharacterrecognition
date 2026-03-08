@@ -134,6 +134,53 @@ const History = () => {
     setDialogOpen(true);
   };
 
+  const handleDeleteSingle = async (id: string) => {
+    try {
+      setDeleting(true);
+      const { error } = await supabase.from('evaluations').delete().eq('id', id);
+      if (error) throw error;
+      setEvaluations(prev => prev.filter(e => e.id !== id));
+      setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+      toast({ title: "Deleted", description: "Evaluation removed successfully" });
+    } catch {
+      toast({ title: "Error", description: "Failed to delete evaluation", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      setDeleting(true);
+      const { error } = await supabase.from('evaluations').delete().in('id', Array.from(selectedIds));
+      if (error) throw error;
+      setEvaluations(prev => prev.filter(e => !selectedIds.has(e.id)));
+      setSelectedIds(new Set());
+      toast({ title: "Deleted", description: `${selectedIds.size} evaluation(s) removed` });
+    } catch {
+      toast({ title: "Error", description: "Failed to delete evaluations", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredEvaluations.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredEvaluations.map(e => e.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+
   const getConfidenceBadge = (confidence: string | null) => {
     if (!confidence) return <Badge variant="secondary">Unknown</Badge>;
     
